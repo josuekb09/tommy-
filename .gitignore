@@ -1,6 +1,18 @@
 node_modules/
 dist/
+build/
 screenshots/
+
+# Local environment and editor/system files
+.env
+.env.*
+!.env.example
+.vscode/
+.idea/
+*.swp
+*.suo
+.DS_Store
+Thumbs.db
 
 # Local test artefacts
 test-results/
