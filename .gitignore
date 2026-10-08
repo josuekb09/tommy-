@@ -1,0 +1,10 @@
+node_modules/
+dist/
+screenshots/
+
+# Local test artefacts
+test-results/
+playwright-report/
+
+# TypeScript build cache
+*.tsbuildinfo

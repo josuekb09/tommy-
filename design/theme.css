@@ -1,0 +1,12 @@
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-border: var(--border);
+  --font-sans: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+:root {
+  --background: #f7f8fa;
+  --foreground: #1b1f27;
+  --border: #e4e7ec;
+}

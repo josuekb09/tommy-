@@ -1,0 +1,39 @@
+{
+  "name": "tommy-timer",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0 <23"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "capture": "node scripts/capture-ui.mjs",
+    "capture:demo": "node scripts/capture-demo.mjs",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@fontsource/inter": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@vitejs/plugin-react": "latest",
+    "idb": "latest",
+    "lucide-react": "^1.52.0",
+    "react": "latest",
+    "react-dom": "latest",
+    "vite-plugin-pwa": "latest"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.63.0",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "lighthouse": "^13.5.0",
+    "playwright": "^1.63.0",
+    "typescript": "latest",
+    "vite": "^8.3.4",
+    "vitest": "latest"
+  }
+}

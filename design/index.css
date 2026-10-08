@@ -1,0 +1,11 @@
+@import './styles/fonts.css';
+@import 'tailwindcss';
+@import './styles/theme.css';
+
+@layer base {
+  body { font-family: 'Inter', sans-serif; background: var(--background); color: var(--foreground); }
+  button { cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+  button, input, select { outline-offset: 4px; }
+  ::selection { background: #dce9fc; }
+}
