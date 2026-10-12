@@ -23,6 +23,7 @@
     "lucide-react": "^1.52.0",
     "react": "latest",
     "react-dom": "latest",
+    "tesseract.js": "^7.0.0",
     "vite-plugin-pwa": "latest"
   },
   "devDependencies": {

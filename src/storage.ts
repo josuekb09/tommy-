@@ -15,3 +15,12 @@ export function saveMeeting(meeting: Meeting) {
 export async function loadMeetings() { return (await db()).getAll("meetings") as Promise<Meeting[]> }
 export async function saveSettings(settings: Settings) { (await db()).put("settings", settings, "main") }
 export async function loadSettings() { return (await db()).get("settings", "main") as Promise<Settings | undefined> }
+
+export function findCurrentMeeting(meetings: Meeting[], currentMeetingId?: string): Meeting | undefined {
+  if (!meetings.length) return undefined
+  if (currentMeetingId) {
+    const match = meetings.find(m => m.id === currentMeetingId)
+    if (match) return match
+  }
+  return [...meetings].sort((a, b) => (b.date || "").localeCompare(a.date || ""))[0]
+}

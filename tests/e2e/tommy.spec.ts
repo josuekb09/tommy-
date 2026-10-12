@@ -128,3 +128,101 @@ test("accessibility: add-speaker form and keyboard focus have names and visible 
   await page.goto("/"); await openQueue(page); await page.getByRole("button", { name: "Add speaker", exact: true }).click(); const results = await new AxeBuilder({ page }).analyze(); expect(results.violations.filter(violation => ["serious", "critical"].includes(violation.impact || ""))).toEqual([])
   await expect(page.getByRole("button", { name: "Close add speaker" })).toBeVisible(); const focus = await page.evaluate(() => { const active = document.activeElement as HTMLElement, style = getComputedStyle(document.activeElement as Element); return { name: active.getAttribute("aria-label") || active.getAttribute("placeholder"), outlineWidth: style.outlineWidth, outlineStyle: style.outlineStyle } }); expect(focus.name).toBe("e.g. Taylor Brooks"); expect(focus.outlineStyle).not.toBe("none"); expect(parseFloat(focus.outlineWidth)).toBeGreaterThanOrEqual(3)
 })
+
+test("agenda scanner is available from the queue and safely rejects unsupported files", async ({ page }) => {
+  await page.goto("/"); await openQueue(page); await page.getByRole("button", { name: /Scan Meeting Agenda/ }).click()
+  await expect(page.getByRole("heading", { name: "Scan Meeting Agenda" })).toBeVisible(); await expect(page.getByText(/processes photos locally/i)).toBeVisible()
+  const results = await new AxeBuilder({ page }).analyze(); expect(results.violations.filter(violation => ["serious", "critical"].includes(violation.impact || ""))).toEqual([])
+  await page.locator('input[type="file"]').last().setInputFiles({ name: "agenda.pdf", mimeType: "application/pdf", buffer: Buffer.from("not a pdf") })
+  await expect(page.getByRole("alert")).toContainText("image file")
+  await page.getByRole("button", { name: "Manage photos" }).click(); await expect(page.getByRole("button", { name: "Add photos" })).toBeVisible()
+})
+
+test("agenda scanner handles OCR error reporting and recovery gracefully", async ({ page }) => {
+  await page.goto("/"); await openQueue(page); await page.getByRole("button", { name: /Scan Meeting Agenda/ }).click()
+  // Mock worker error to test UI failure classification and recovery without external network dependency
+  await page.evaluate(() => {
+    const OriginalWorker = window.Worker
+    window.Worker = class MockWorker extends OriginalWorker {
+      constructor(scriptURL: string | URL, options?: WorkerOptions) {
+        super(scriptURL, options)
+        setTimeout(() => {
+          if (this.onerror) {
+            this.onerror(new ErrorEvent("error", { message: "Failed to execute 'importScripts' on 'WorkerGlobalScope'" }))
+          }
+        }, 50)
+      }
+    }
+  })
+  const png1x1 = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64")
+  await page.locator('input[type="file"]').last().setInputFiles({ name: "agenda.png", mimeType: "image/png", buffer: png1x1 })
+  await page.getByRole("button", { name: "Review agenda" }).click()
+  await expect(page.getByRole("alert")).toBeVisible()
+  await expect(page.getByText(/could not start/i)).toBeVisible()
+  await page.getByRole("button", { name: "Manage photos" }).click()
+  await expect(page.getByRole("button", { name: "Add photos" })).toBeVisible()
+})
+
+test("undo reset button is disabled initially, enabled after reset, and restores timer", async ({ page }) => {
+  await installClock(page); await page.goto("/"); await freezeClock(page); await openQueue(page)
+  await addSpeaker(page, "Undo Tester")
+  await startSelected(page)
+  await page.clock.runFor(45_000)
+  await page.getByRole("button", { name: "Pause", exact: true }).click()
+  await expectTimer(page, 0, 45)
+
+  // Undo button should be disabled before any reset occurs
+  const undoButton = page.getByRole("button", { name: "Undo reset", exact: true })
+  await expect(undoButton).toBeDisabled()
+
+  // Reset the timer
+  page.once("dialog", dialog => dialog.accept())
+  await page.getByRole("button", { name: "Reset", exact: true }).click()
+  await expectTimer(page, 0, 0)
+
+  // Undo button should now be enabled
+  await expect(undoButton).toBeEnabled()
+
+  // Click Undo and verify original time is restored
+  await undoButton.click()
+  await expectTimer(page, 0, 45)
+
+  // Undo button should be disabled again after restoring
+  await expect(undoButton).toBeDisabled()
+})
+
+test("editing report rows targets the correct turn when two speakers have the same name", async ({ page }) => {
+  await installClock(page); await page.goto("/"); await freezeClock(page)
+  await chooseSegment(page, "Table Topics")
+  await addGuest(page, "Sam Guest")
+  await addGuest(page, "Sam Guest")
+
+  // Time first Sam Guest for 1:15
+  await page.getByRole("button", { name: /^Sam Guest Table Topics/ }).first().click()
+  await startSelected(page)
+  await page.clock.runFor(75_000)
+  await page.getByRole("button", { name: "Stop", exact: true }).click()
+
+  // Time second Sam Guest for 1:45
+  await openQueue(page)
+  await page.getByRole("button", { name: /^Sam Guest Table Topics/ }).last().click()
+  await startSelected(page)
+  await page.clock.runFor(105_000)
+  await page.getByRole("button", { name: "Stop", exact: true }).click()
+
+  // Open report and verify both rows are displayed
+  await page.getByRole("button", { name: "Report", exact: true }).click()
+  const timeButtons = page.locator(".report-table .time-edit")
+  await expect(timeButtons).toHaveCount(2)
+  await expect(timeButtons.first()).toHaveText("1:15")
+  await expect(timeButtons.last()).toHaveText("1:45")
+
+  // Edit the second Sam Guest's time to 2:00
+  await timeButtons.last().click()
+  await page.getByLabel("Recorded time", { exact: true }).fill("2:00")
+  await page.getByRole("button", { name: "Save recorded time" }).click()
+
+  // Verify first Sam remains 1:15 while second Sam updated to 2:00
+  await expect(timeButtons.first()).toHaveText("1:15")
+  await expect(timeButtons.last()).toHaveText("2:00")
+})
