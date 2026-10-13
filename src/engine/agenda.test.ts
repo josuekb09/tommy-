@@ -47,6 +47,38 @@ describe("parseAgenda", () => {
     ])
     expect(merged.originalText).toMatch(/^Page 1/)
   })
+  it("strictly classifies the two-page ToastED agenda by role and preserves row thresholds", () => {
+    const pageOne = parseAgenda(`ToastED meeting agenda
+18:15 | Toastmaster | Eugene Asem | 0:00
+18:58 | 1st Speaker | Kim Austen | 4:00 | 5:00 | 6:00
+19:05 | 2nd Speaker | Christina Thomas | 5:00 | 6:00 | 7:00
+19:13 | 3rd Speaker | Chris Adlam | 5:00 | 6:00 | 7:00
+President | Michaela Geldhof | 2:00
+Timekeeper | Josue Kabuya | 1:00
+Educational Speaker | Michaela Geldhof | 15:00`)
+    const pageTwo = parseAgenda(`1st Evaluator | Michaela Geldhof | — | — | 1:00
+2nd Evaluator | Titus Magua | — | — | 1:00
+3rd Evaluator | Andrea Baptista | — | — | 1:00
+Table Topics Master | Philip Townsend | 1:00 | 1:30 | 2:00
+General Evaluator | Someone Else | 5:00
+Um, Er Counter | Maria van Rooyen | 1:00
+Grammarian | Fulu Nemaitoni | 1:00
+1st Evaluator | Michaela Geldhof | 2:00 | 2:30 | 3:00
+2nd Evaluator | Titus Magua | 2:00 | 2:30 | 3:00
+3rd Evaluator | Andrea Baptista | 2:00 | 2:30 | 3:00`)
+    const draft = mergeAgendaDrafts([pageOne, pageTwo])
+
+    expect(draft.items.filter(item => item.segment === "speeches").map(item => [item.name, item.thresholds])).toEqual([
+      ["Kim Austen", { green: 240, yellow: 300, red: 360 }],
+      ["Christina Thomas", { green: 300, yellow: 360, red: 420 }],
+      ["Chris Adlam", { green: 300, yellow: 360, red: 420 }]
+    ])
+    expect(draft.items.filter(item => item.segment === "evaluations").map(item => [item.name, item.thresholds])).toEqual([
+      ["Michaela Geldhof", { green: 60, yellow: 60, red: 60 }], ["Titus Magua", { green: 60, yellow: 60, red: 60 }], ["Andrea Baptista", { green: 60, yellow: 60, red: 60 }]
+    ])
+    expect(draft.items.filter(item => item.segment === "tableTopics").map(item => [item.name, item.thresholds])).toEqual([["Philip Townsend", { green: 60, yellow: 90, red: 120 }]])
+    expect(draft.items.map(item => item.name)).not.toEqual(expect.arrayContaining(["Eugene Asem", "Josue Kabuya", "Maria van Rooyen", "Fulu Nemaitoni"]))
+  })
 })
 
 describe("mergeAgendaIntoMeeting", () => {

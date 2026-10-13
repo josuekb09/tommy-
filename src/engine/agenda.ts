@@ -1,4 +1,4 @@
-import { presets, type Meeting, type SegmentType, type Settings, type Turn } from "./types"
+import { presets, type Meeting, type SegmentType, type Settings, type Thresholds, type Turn } from "./types"
 
 export type AgendaRole = "Speech" | "Ice Breaker" | "Evaluation" | "Table Topics" | "unknown"
 export type AgendaItem = {
@@ -7,6 +7,7 @@ export type AgendaItem = {
   name: string
   title: string
   durationSeconds?: number
+  thresholds?: Thresholds
   segment?: SegmentType
   uncertain: string[]
   source: string
@@ -28,13 +29,14 @@ const duration = (value: string) => {
   const seconds = match[2] ? Number(match[1]) * 60 + Number(match[2]) : Number(match[1]) * 60
   return seconds > 0 && seconds <= 60 * 30 ? seconds : undefined
 }
+const excludedRole = (line: string) => /\b(?:toastmaster(?:\s+of\s+the\s+day)?|president|sergeant\s+at\s+arms|time\s*keeper|timer(?:'?s)?\s+report|general\s+evaluat(?:or|ion)|grammarian|(?:ah|um|er)[-\s]*counter|educational(?:\s+speaker)?|table\s+topics\s+report|evaluation\s+report|meeting\s+(?:opening|closing|start|end)|break|interval|announcement)\b/i.test(line)
 const roleFor = (line: string): AgendaRole => {
-  if (/table\s*topics|topics\s*speaker/i.test(line)) return "Table Topics"
+  // Roles, not incidental names or times, determine queue eligibility.
+  if (excludedRole(line)) return "unknown"
+  if (/\btable\s*topics\s*(?:master|speaker)\b/i.test(line)) return "Table Topics"
   if (/ice\s*breaker/i.test(line)) return "Ice Breaker"
-  // These are meeting roles, not timed evaluation turns in Tommy's existing model.
-  if (/general\s+evaluat|topics\s+evaluat/i.test(line)) return "unknown"
-  if (/evaluat(?:ion|or)/i.test(line)) return "Evaluation"
-  if (/\b(?:speech(?:es)?|speaker)\b/i.test(line)) return "Speech"
+  if (/\b(?:\d+(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+evaluat(?:or|ion)\b|\bevaluat(?:or|ion)\s*\d+\b|(?:^|[|:—–])\s*evaluat(?:or|ion)\b|\bevaluat(?:or|ion)\s+for\b/i.test(line)) return "Evaluation"
+  if (/\b(?:\d+(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+(?:prepared\s+)?speaker\b|\bspeaker\s*\d+\b|\bprepared\s+speech(?:\s+speaker)?\b|(?:^|[|:—–])\s*(?:\d+[.)]\s*)?speech\b/i.test(line)) return "Speech"
   return "unknown"
 }
 const segmentFor = (role: AgendaRole): SegmentType | undefined => role === "Evaluation" ? "evaluations" : role === "Table Topics" ? "tableTopics" : role === "Speech" || role === "Ice Breaker" ? "speeches" : undefined
@@ -50,21 +52,42 @@ const nameFrom = (value: string) => {
   return matches.find(probablyName) || ""
 }
 const stripRole = (line: string) => line
-  .replace(/table\s*topics(?:\s*speaker)?/ig, "")
+  .replace(/table\s*topics\s*(?:master|speaker)/ig, "")
   .replace(/ice\s*breaker/ig, "")
-  .replace(/evaluat(?:ion|or)/ig, "")
+  .replace(/\b(?:\d+(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+evaluat(?:ion|or)\b|\bevaluat(?:ion|or)\s*\d+\b|evaluat(?:ion|or)/ig, "")
   .replace(/\bprepared\s*/ig, "")
-  .replace(/\b(?:speech(?:es)?|speaker)\b/ig, "")
+  .replace(/\b(?:\d+(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+speaker\b|\bspeaker\s*\d+\b|\b(?:speech(?:es)?|speaker)\b/ig, "")
   .replace(/^\d{1,2}[:.)\-\s]+/, "")
   .replace(/\b\d{1,2}\s*(?:min(?:ute)?s?|m)\b|\b\d{1,2}:\d{2}\b/ig, "")
 const dedupeItems = (items: AgendaItem[]) => {
   const seen = new Set<string>()
   return items.filter(item => {
-    const key = `${item.role}|${normalized(item.name)}|${normalized(item.title)}`
+    const t = item.thresholds
+    // Tommy currently has one evaluation queue, not separate short-comment and
+    // full-evaluation phases. Keep the first numbered evaluator assignment so
+    // a later appearance cannot overwrite or duplicate that person.
+    const key = item.role === "Evaluation"
+      ? `${item.role}|${normalized(item.name)}`
+      : `${item.role}|${normalized(item.name)}|${normalized(item.title)}|${t?.green ?? ""}/${t?.yellow ?? ""}/${t?.red ?? ""}`
     if (!item.name || seen.has(key)) return !item.name
     seen.add(key)
     return true
   })
+}
+
+const clockValues = (value: string) => [...value.matchAll(/\b(\d{1,2}):(\d{2})\b/g)]
+  .map(match => Number(match[1]) * 60 + Number(match[2]))
+  .filter(seconds => seconds > 0 && seconds <= 30 * 60)
+
+/** Extract G/Y/R from the participant's own row. Scheduled start times before
+ * the presenter are excluded. Red-only rows use the red limit for all three
+ * internal cue points, so they never signal green/yellow before red. */
+const thresholdsFrom = (line: string, name: string): Thresholds | undefined => {
+  const at = name ? line.toLocaleLowerCase().indexOf(name.toLocaleLowerCase()) : -1
+  const values = clockValues(at >= 0 ? line.slice(at + name.length) : line)
+  if (values.length >= 3) return { green: values[values.length - 3], yellow: values[values.length - 2], red: values[values.length - 1] }
+  if (values.length === 1) return { green: values[0], yellow: values[0], red: values[0] }
+  return undefined
 }
 
 /** Converts OCR text into a cautious, editable agenda draft. It never manufactures people or durations. */
@@ -95,7 +118,8 @@ export function parseAgenda(text: string): AgendaDraft {
     const uncertain: string[] = []
     if (!name) uncertain.push("Participant name needs review")
     if (role === "Speech" && !title) uncertain.push("Speech title not recognized")
-    const item: AgendaItem = { id: makeId(index), role, name, title, durationSeconds: duration(line), segment: segmentFor(role), uncertain, source: line }
+    const thresholds = thresholdsFrom(line, name)
+    const item: AgendaItem = { id: makeId(index), role, name, title, durationSeconds: thresholds?.red || duration(line), thresholds, segment: segmentFor(role), uncertain, source: line }
     draft.items.push(item)
   }
   if (!draft.title) draft.warnings.push("Meeting title was not confidently recognized.")
@@ -163,10 +187,15 @@ export function mergeAgendaIntoMeeting(
       if (item.segment !== segment.type) continue
       const role = item.role as keyof typeof presets
       const trimmedName = item.name.trim()
+      const turnThresholds = item.thresholds || settings.presetOverrides?.[role] || presets[role]
 
-      // Duplicate prevention: skip if turn with same name & role already exists in this segment
+      // Suppress repeats from overlapping page photos. Evaluation assignments
+      // are one-per-person in the present data model.
       const isDuplicate = resultTurns.some(
         t => t.name.trim().toLowerCase() === trimmedName.toLowerCase() && t.role === role
+          && (role === "Evaluation" || (t.thresholds.green === turnThresholds.green
+            && t.thresholds.yellow === turnThresholds.yellow
+            && t.thresholds.red === turnThresholds.red))
       )
       if (isDuplicate) continue
 
@@ -179,7 +208,7 @@ export function mergeAgendaIntoMeeting(
         id: uid(),
         name: trimmedName,
         role,
-        thresholds: { ...(settings.presetOverrides?.[role] || presets[role]) },
+        thresholds: { ...turnThresholds },
         status: "queued",
         elapsedMs: 0,
         note
