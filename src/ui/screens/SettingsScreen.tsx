@@ -142,6 +142,11 @@ export function SettingsScreen({ data, readOnly, notify }: Props) {
           value={rules.contestMode}
           onChange={value => setRules({ contestMode: value })}
         />
+        <Toggle
+          label="Guests can be Best Table Topics"
+          value={rules.tableTopicsGuestsEligible}
+          onChange={value => setRules({ tableTopicsGuestsEligible: value })}
+        />
         <label>
           Report style
           <select value={rules.reportStyle} onChange={event => setRules({ reportStyle: event.target.value as ClubRules["reportStyle"] })} disabled={readOnly}>

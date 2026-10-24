@@ -17,6 +17,8 @@ export type ClubRules = {
   /** Disqualification outside the grace window; names hidden on the speaker display. */
   contestMode: boolean
   reportStyle: ReportStyle
+  /** Guests can be named Best Table Topics speaker. */
+  tableTopicsGuestsEligible: boolean
 }
 
 export type ProfileCategory = "speech" | "evaluation" | "table_topics" | "role" | "contest" | "custom"

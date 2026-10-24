@@ -70,14 +70,14 @@ test("a meeting built by hand runs through the Timer in agenda order and every p
   await nav(page, "Report")
   const lines = await page.locator(".report-line").evaluateAll(rows => rows.map(row => (row as HTMLElement).innerText.replace(/\s+/g, " ").trim()))
   expect(lines).toEqual([
-    "Eva Evaluator 0:50 Within time",
-    "Ada Speaker 6:12 Within time",
-    "Ben Speaker 4:50 Within time",
-    "Guest 1 Guest 1:15 Within time",
-    "Guest 2 Guest 1:35 Within time",
-    "Gia Guest Guest 2:10 Over time",
-    "Eva Evaluator 2:30 Within time",
-    "Ed Evaluator 3:15 Within time",
+    "Ada Speaker Speaker · 5:00 to 7:00 6:12 Within time",
+    "Ben Speaker Speaker · 4:00 to 6:00 4:50 Within time",
+    "Eva Evaluator Evaluator brief · up to 1:00 0:50 Within time",
+    "Eva Evaluator Evaluator · 2:00 to 3:00 2:30 Within time",
+    "Ed Evaluator Evaluator · 2:00 to 3:00 3:15 Within time",
+    "Guest 1 Guest Table Topics speaker · 1:00 to 2:00 1:15 Within time",
+    "Guest 2 Guest Table Topics speaker · 1:00 to 2:00 1:35 Within time",
+    "Gia Guest Guest Table Topics speaker · 1:00 to 2:00 Not eligible for awards. Over time: 2:10 is over the 2:00 limit. 2:10 Over time",
   ])
 })
 

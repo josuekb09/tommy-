@@ -3,6 +3,7 @@ import { ClipboardList, Clock3, ListOrdered, Settings2 } from "lucide-react"
 import { useRegisterSW } from "virtual:pwa-register/react"
 import { useAppData, useRoute, useWriterLock, type Route } from "./hooks"
 import { MeetingScreen } from "./screens/MeetingScreen"
+import { PrintLog } from "./screens/PrintLog"
 import { ReportScreen } from "./screens/ReportScreen"
 import { SettingsScreen } from "./screens/SettingsScreen"
 import { TimerScreen } from "./screens/TimerScreen"
@@ -62,6 +63,8 @@ function TimerApp({ route, go }: { route: Route; go: (route: Route) => void }) {
       </main>
     )
   const ready = { ...data, meeting: data.meeting }
+  // The printable Timer's log is a page of its own: no header, banners or navigation.
+  if (route === "print") return <PrintLog data={ready} back={() => go("report")} />
 
   return (
     <main className="app-shell">
@@ -107,7 +110,7 @@ function TimerApp({ route, go }: { route: Route; go: (route: Route) => void }) {
           setExplaining={setExplaining}
         />
       )}
-      {route === "report" && <ReportScreen data={ready} notify={notify} />}
+      {route === "report" && <ReportScreen data={ready} notify={notify} openPrint={() => go("print")} />}
       {route === "settings" && <SettingsScreen data={ready} readOnly={readOnly} notify={notify} />}
       <nav className="bottom-nav" aria-label="Primary navigation">
         {navigation.map(({ route: target, label, Icon }) => (

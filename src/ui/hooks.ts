@@ -6,8 +6,8 @@ import { normalizeClub } from "../storage/repository"
 import { elapsedAt, stateOf } from "../engine/timing"
 import { clock, db, repo } from "./runtime"
 
-export type Route = "meeting" | "timer" | "report" | "settings" | "speaker" | "zoom"
-const routes: Route[] = ["meeting", "timer", "report", "settings", "speaker", "zoom"]
+export type Route = "meeting" | "timer" | "report" | "settings" | "speaker" | "zoom" | "print"
+const routes: Route[] = ["meeting", "timer", "report", "settings", "speaker", "zoom", "print"]
 
 const readRoute = (): Route => {
   const hash = window.location.hash.replace(/^#\/?/, "") as Route

@@ -44,6 +44,7 @@ export const defaultRules: ClubRules = {
   overtime: "afterGrace",
   contestMode: false,
   reportStyle: "exact",
+  tableTopicsGuestsEligible: true,
 }
 
 /** Club rules with defaults filled in for anything a club saved before the rule existed. */

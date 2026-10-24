@@ -13,6 +13,8 @@ export type AppSettings = {
   /** Show the pattern/icon cue next to every signal. */
   signalPatterns: boolean
   theme: Theme
+  /** The English voice chosen for reading the report aloud (a voiceURI). */
+  reportVoice?: string
   currentMeetingId?: string
   currentClubId?: string
 }

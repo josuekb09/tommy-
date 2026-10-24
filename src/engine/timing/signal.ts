@@ -30,13 +30,22 @@ export function signalAt(elapsedMs: number, profile: TimingProfile): Signal {
  * minimum. Both window edges count as within time.
  */
 export function resultFor(elapsedMs: number, profile: TimingProfile, rule: WithinRule): TimeResult {
-  const useGrace = rule === "grace" || profile.disqualifyEnabled
-  const over = useGrace ? profile.graceSeconds : 0
-  const under = useGrace ? (profile.graceUnderSeconds ?? profile.graceSeconds) : 0
-  const min = profile.redOnly ? 0 : Math.max(0, profile.green - under) * 1000
-  const max = (profile.red + over) * 1000
-  const outcome: TimeResult = elapsedMs < min ? "under" : elapsedMs > max ? "over" : "within"
+  const { minMs, maxMs } = qualifyingWindow(profile, rule)
+  const outcome: TimeResult = elapsedMs < minMs ? "under" : elapsedMs > maxMs ? "over" : "within"
   return outcome !== "within" && profile.disqualifyEnabled ? "disqualified" : outcome
+}
+
+/** The window `resultFor` counts as within time, and the grace that widened it (seconds). */
+export function qualifyingWindow(profile: TimingProfile, rule: WithinRule) {
+  const useGrace = rule === "grace" || profile.disqualifyEnabled
+  const graceOverSeconds = useGrace ? profile.graceSeconds : 0
+  const graceUnderSeconds = useGrace && !profile.redOnly ? (profile.graceUnderSeconds ?? profile.graceSeconds) : 0
+  return {
+    minMs: profile.redOnly ? 0 : Math.max(0, profile.green - graceUnderSeconds) * 1000,
+    maxMs: (profile.red + graceOverSeconds) * 1000,
+    graceOverSeconds,
+    graceUnderSeconds,
+  }
 }
 
 const order: Signal[] = ["none", "green", "amber", "red", "overtime", "disqualified"]

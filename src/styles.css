@@ -2299,3 +2299,273 @@ html[data-theme="dark"] .sheet-submit.danger {
 .member-editor .sheet-actions {
   margin-top: 12px;
 }
+
+/* ---------- Timer's report (phase 7) ---------- */
+.report-screen .report-actions {
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+}
+.report-line .time-edit {
+  text-decoration: none;
+}
+.report-line .person-chip {
+  margin: 2px 0;
+}
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 800;
+}
+.status-within {
+  color: var(--green);
+}
+.status-over,
+.status-under,
+.status-disqualified {
+  color: var(--red);
+}
+.status-not_timed,
+.status-in_progress {
+  color: var(--muted);
+}
+html[data-theme="dark"] .status-within {
+  color: #7fdcae;
+}
+html[data-theme="dark"] .status-over,
+html[data-theme="dark"] .status-under,
+html[data-theme="dark"] .status-disqualified {
+  color: #ff8a95;
+}
+.report-line.line-not_timed b {
+  color: var(--muted);
+}
+.report-edited,
+.report-ineligible {
+  display: block;
+  margin-top: 2px;
+  font-weight: 600;
+}
+.report-ineligible {
+  color: var(--red);
+}
+html[data-theme="dark"] .report-ineligible {
+  color: #ff8a95;
+}
+.report-note {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.read-aloud {
+  margin-bottom: 18px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.read-aloud-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.read-aloud-controls > button {
+  flex: 1 1 96px;
+}
+.read-aloud-now {
+  margin: 10px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.read-aloud .field-label {
+  margin-top: 12px;
+}
+.awards .award {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  margin-top: 8px;
+}
+.awards h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+.awards p,
+.awards li {
+  margin: 4px 0;
+  font-size: 14px;
+}
+.awards svg {
+  vertical-align: -2px;
+  margin-right: 4px;
+}
+.awards ul {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  color: var(--muted);
+}
+.presenter {
+  z-index: 8;
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  padding: 24px clamp(16px, 5vw, 64px);
+  overflow-y: auto;
+}
+.presenter header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.presenter header span {
+  color: var(--muted);
+  font-weight: 700;
+}
+.presenter header h2 {
+  flex: 1;
+  margin: 0;
+  font-size: clamp(28px, 5vw, 56px);
+}
+.presenter-lines,
+.presenter-awards {
+  list-style: none;
+  margin: 24px 0;
+  padding: 0;
+  flex: 1;
+}
+.presenter-lines li,
+.presenter-awards li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: clamp(12px, 3vw, 40px);
+  padding: clamp(10px, 2vh, 22px) 0;
+  border-bottom: 1px solid var(--border);
+  font-size: clamp(22px, 4vw, 48px);
+}
+.presenter-awards li {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+}
+.presenter-name {
+  font-weight: 800;
+}
+.presenter-time {
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 700;
+}
+.presenter .status-chip {
+  font-size: clamp(16px, 2.6vw, 32px);
+}
+.presenter .status-chip svg {
+  width: 1em;
+  height: 1em;
+}
+.presenter footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.presenter footer button {
+  min-width: 140px;
+}
+
+/* The printable Timer's log is always dark ink on white paper. */
+.print-view {
+  min-height: 100dvh;
+  background: #fff;
+  color: #111;
+  padding: 16px;
+}
+.print-toolbar {
+  max-width: 960px;
+  margin: 0 auto 16px;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.print-toolbar .secondary-button {
+  background: #fff;
+  color: #111;
+  border-color: #c9ced8;
+}
+.timer-log {
+  max-width: 960px;
+  margin: auto;
+  font-size: 13px;
+}
+.timer-log h1 {
+  margin: 0;
+  font-size: 26px;
+}
+.timer-log header p {
+  margin: 4px 0 0;
+  color: #333;
+}
+.timer-log h2 {
+  margin: 20px 0 6px;
+  font-size: 16px;
+}
+.timer-log table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.timer-log th,
+.timer-log td {
+  border: 1px solid #555;
+  padding: 5px 6px;
+  text-align: left;
+  vertical-align: top;
+}
+.timer-log thead th {
+  background: #eee;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+.timer-log .log-time {
+  font-family: "JetBrains Mono", monospace;
+  white-space: nowrap;
+}
+.log-awards {
+  margin: 0;
+  padding-left: 18px;
+}
+.log-sign {
+  margin-top: 36px;
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+@media (max-width: 640px) {
+  .timer-log {
+    overflow-x: auto;
+  }
+}
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm;
+  }
+  .print-toolbar,
+  .presenter,
+  .read-aloud {
+    display: none !important;
+  }
+  .print-view {
+    padding: 0;
+    min-height: 0;
+  }
+  .timer-log tr,
+  .timer-log h2 {
+    break-inside: avoid;
+  }
+  .timer-log h2 {
+    break-after: avoid;
+  }
+}

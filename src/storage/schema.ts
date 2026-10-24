@@ -72,6 +72,7 @@ const rules = z.object({
   overtime: z.enum(["afterGrace", "never"]).default("afterGrace"),
   contestMode: z.boolean(),
   reportStyle: z.enum(["exact", "category"]),
+  tableTopicsGuestsEligible: z.boolean().default(true),
 })
 const definition = z.object({
   id: z.string(),
@@ -101,6 +102,7 @@ const settings = z.object({
   speakerClock: z.boolean().default(false),
   signalPatterns: z.boolean(),
   theme: z.enum(["system", "light", "dark"]),
+  reportVoice: z.string().optional(),
   currentMeetingId: z.string().optional(),
   currentClubId: z.string().optional(),
 })
