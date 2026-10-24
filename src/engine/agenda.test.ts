@@ -76,8 +76,25 @@ Grammarian | Fulu Nemaitoni | 1:00
     expect(draft.items.filter(item => item.segment === "evaluations").map(item => [item.name, item.thresholds])).toEqual([
       ["Michaela Geldhof", { green: 60, yellow: 60, red: 60 }], ["Titus Magua", { green: 60, yellow: 60, red: 60 }], ["Andrea Baptista", { green: 60, yellow: 60, red: 60 }]
     ])
-    expect(draft.items.filter(item => item.segment === "tableTopics").map(item => [item.name, item.thresholds])).toEqual([["Philip Townsend", { green: 60, yellow: 90, red: 120 }]])
+    // The Table Topics Master runs the section; it is not a guest to time.
+    expect(draft.items.filter(item => item.segment === "tableTopics")).toEqual([])
     expect(draft.items.map(item => item.name)).not.toEqual(expect.arrayContaining(["Eugene Asem", "Josue Kabuya", "Maria van Rooyen", "Fulu Nemaitoni"]))
+  })
+  it("keeps flattened table rows from swallowing event words into presenter names", () => {
+    const draft = parseAgenda(`Cape Town Toastmasters Meeting Agenda
+Toastmaster Meeting 23rd September 2026
+19:20 1st Speaker Ruben Pretorius This is me 4:00 5:00 6:00
+19:26 2nd Speaker Jan-Hendrik Esterhuysen The art of possibility 5:00 6:00 7:00
+19:40 4th Speaker Tehzeen Anjarwalla Leading peaceful transformations 5:00 6:00 7:00
+20:11 1st Evaluator John Hambleton Evaluate speech 1 2:00 2:30 3:00
+20:28 Table Topics Master Susanna Kwon Let the Fun Begin 1:00 1:30 2:00`)
+
+    expect(draft.items.map(item => [item.role, item.name, item.title, item.thresholds])).toEqual([
+      ["Speech", "Ruben Pretorius", "This is me", { green: 240, yellow: 300, red: 360 }],
+      ["Speech", "Jan-Hendrik Esterhuysen", "The art of possibility", { green: 300, yellow: 360, red: 420 }],
+      ["Speech", "Tehzeen Anjarwalla", "Leading peaceful transformations", { green: 300, yellow: 360, red: 420 }],
+      ["Evaluation", "John Hambleton", "", { green: 120, yellow: 150, red: 180 }]
+    ])
   })
 })
 

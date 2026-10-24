@@ -1,7 +1,7 @@
 import { chromium } from "playwright"
 import { mkdir } from "node:fs/promises"
 
-const browser = await chromium.launch({ executablePath: "C:/Users/hp/AppData/Local/ms-playwright/chromium-1234/chrome-win64/chrome.exe", headless: true })
+const browser = await chromium.launch({ headless: true })
 await mkdir("screenshots", { recursive: true })
 async function openTimer(width, height, theme) {
   const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1, colorScheme: theme })

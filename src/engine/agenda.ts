@@ -29,7 +29,9 @@ const duration = (value: string) => {
   const seconds = match[2] ? Number(match[1]) * 60 + Number(match[2]) : Number(match[1]) * 60
   return seconds > 0 && seconds <= 60 * 30 ? seconds : undefined
 }
-const excludedRole = (line: string) => /\b(?:toastmaster(?:\s+of\s+the\s+day)?|president|sergeant\s+at\s+arms|time\s*keeper|timer(?:'?s)?\s+report|general\s+evaluat(?:or|ion)|grammarian|(?:ah|um|er)[-\s]*counter|educational(?:\s+speaker)?|table\s+topics\s+report|evaluation\s+report|meeting\s+(?:opening|closing|start|end)|break|interval|announcement)\b/i.test(line)
+// Agenda officials facilitate a section; they are never people Tommy needs to
+// time. In particular, a Table Topics *Master* is not a Table Topics guest.
+const excludedRole = (line: string) => /\b(?:toastmaster(?:\s+of\s+the\s+day)?|president|sergeant\s+at\s+arms|time\s*keeper|timer(?:'?s)?\s+report|general\s+evaluat(?:or|ion)|grammarian|(?:ah|um|er)[-\s]*counter|educational(?:\s+speaker)?|table\s+topics\s+(?:master|report)|evaluation\s+report|meeting\s+(?:opening|closing|start|end)|break|interval|announcement)\b/i.test(line)
 const roleFor = (line: string): AgendaRole => {
   // Roles, not incidental names or times, determine queue eligibility.
   if (excludedRole(line)) return "unknown"
@@ -51,12 +53,39 @@ const nameFrom = (value: string) => {
   const matches = value.match(/[A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,3}/g) || []
   return matches.find(probablyName) || ""
 }
+// OCR commonly flattens a printed table into one line: "2nd Speaker Jan-Hendrik
+// Esterhuysen The art of possibility". A generic capitalized-word match then
+// mistakes the first word of the event/title for part of the person's name.
+const titleLead = /^(?:a|an|the|this|my|our|your|leading|understanding|deliver|share|present|evaluate|evaluation|introduction|timer|call|welcome|break)$/i
+const rowNameFrom = (value: string) => {
+  const words = clean(value).split(/\s+/).filter(Boolean)
+  const name: string[] = []
+  for (const word of words) {
+    if (titleLead.test(word) || !/^[A-Z][A-Za-z'’-]*$/.test(word)) break
+    name.push(word)
+    // Two names are the reliable shape in agenda presenter cells. Do not
+    // greedily consume a capitalized title word after the surname.
+    if (name.length === 2) break
+  }
+  const candidate = name.join(" ")
+  return probablyName(candidate) ? candidate : nameFrom(value)
+}
+const titleFromRow = (value: string, name: string) => {
+  if (!name) return ""
+  const at = value.toLocaleLowerCase().indexOf(name.toLocaleLowerCase())
+  if (at < 0) return ""
+  const title = clean(value.slice(at + name.length)
+    .replace(/^(?:[-—–|:]|by\b)+\s*/i, "")
+    .replace(/\b\d{1,2}:\d{2}\b.*$/, ""))
+  return /^(?:speaker|speech|[-—–]+)$/i.test(title) ? "" : title
+}
 const stripRole = (line: string) => line
   .replace(/table\s*topics\s*(?:master|speaker)/ig, "")
   .replace(/ice\s*breaker/ig, "")
   .replace(/\b(?:\d+(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+evaluat(?:ion|or)\b|\bevaluat(?:ion|or)\s*\d+\b|evaluat(?:ion|or)/ig, "")
   .replace(/\bprepared\s*/ig, "")
   .replace(/\b(?:\d+(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+speaker\b|\bspeaker\s*\d+\b|\b(?:speech(?:es)?|speaker)\b/ig, "")
+  .replace(/^\d{1,2}:\d{2}\s+/, "")
   .replace(/^\d{1,2}[:.)\-\s]+/, "")
   .replace(/\b\d{1,2}\s*(?:min(?:ute)?s?|m)\b|\b\d{1,2}:\d{2}\b/ig, "")
 const dedupeItems = (items: AgendaItem[]) => {
@@ -109,8 +138,11 @@ export function parseAgenda(text: string): AgendaDraft {
     // A common two-line layout puts a role on one line and the participant on the next.
     const nextLine = lines[index + 1] || ""
     const nextName = roleFor(nextLine) === "unknown" ? nameFrom(nextLine) : ""
-    const name = candidates.find(probablyName) || nameFrom(withoutRole) || nextName
-    let title = candidates.find(candidate => candidate !== name && candidate.length > 2) || ""
+    const name = rowNameFrom(withoutRole) || candidates.find(probablyName) || nextName
+    // Only a separately delimited field is an explicit title. If OCR flattened
+    // the row, derive the text after the presenter's name instead of retaining
+    // the whole row as a bogus title.
+    let title = role === "Evaluation" ? "" : candidates.find(candidate => candidate !== name && !candidate.toLocaleLowerCase().includes(name.toLocaleLowerCase()) && candidate.length > 2 && !/^(?:speaker|speech)$/i.test(candidate)) || titleFromRow(withoutRole, name)
     if (role === "Evaluation") {
       const evaluated = line.match(/(?:\bfor|evaluat(?:ing|es))\s+([A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,3})/i)?.[1]
       if (evaluated) title = `Evaluates ${evaluated}`
