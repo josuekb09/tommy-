@@ -7,7 +7,7 @@ Live site: https://tommy-21n.pages.dev/ (Cloudflare Pages). The whole product is
 Tommy helps the Timer at a Toastmasters meeting. It times each speaker, shows green / amber / red signals, records exact times, imports the meeting agenda from a photo (speakers, Table Topics, evaluators; guests are added manually), and generates the Timer's report. Later a physical ESP32-S3 device (LED ring, touchscreen, speaker) will connect to this web app.
 
 - The audit of the v1 code is in [docs/AUDIT.md](docs/AUDIT.md).
-- The rebuild roadmap is the approved 17-phase plan.
+- The rebuild roadmap is the approved 17-phase plan: [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Stack
 
