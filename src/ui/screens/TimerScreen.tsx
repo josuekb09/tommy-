@@ -1,271 +1,223 @@
-import { useEffect, useMemo, useState } from "react"
-import { ChevronRight, Maximize2, Minimize2, Pause, PencilLine, Play, Plus, RotateCcw, Square, Undo2, UserPlus } from "lucide-react"
-import type { Meeting, Segment, SegmentKind, Signal, TimedRecord } from "../../domain"
-import { formatClock, parseClock, profileFor, roleLabels, segmentLabels } from "../../engine/profiles"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { Bell, BellOff, Check, ChevronRight, Maximize2, Minimize2, Pause, PencilLine, Play, RotateCcw, Square, Undo2, UserPlus } from "lucide-react"
+import type { AgendaItem, Meeting, Segment, SegmentKind, Signal, TimedRecord, TimeResult } from "../../domain"
+import { activityLabel, formatClock, parseClock, profileFor, segmentLabels } from "../../engine/profiles"
 import { signalRank, stateOf, type ActionInput, type Timer, type TimerState } from "../../engine/timing"
 import { resultLabels } from "../../engine/report"
 import { playThresholdTone, unlockAudio } from "../../engine/audio"
 import { Sheet } from "../components"
 import { useSecondTicks, useWakeLock, type AppData } from "../hooks"
 import { repo } from "../runtime"
+import { SignalIcon, signalAnnouncement, signalPresentation } from "../signals"
 import { timerFor } from "../timers"
-
-export const signalText: Record<Signal, { label: string; hint: string; cue: string }> = {
-  none: { label: "Ready", hint: "No signal yet", cue: "○ READY" },
-  green: { label: "Green", hint: "Minimum time reached", cue: "● GREEN" },
-  amber: { label: "Amber", hint: "Start wrapping up", cue: "▲ AMBER" },
-  red: { label: "Red", hint: "Time limit reached", cue: "■ RED" },
-  overtime: { label: "Overtime", hint: "Past the grace period", cue: "✕ OVERTIME" },
-  disqualified: { label: "Disqualified", hint: "Outside the contest window", cue: "✕ DISQUALIFIED" },
-}
-/** CSS uses one red style for every signal past red. */
-export const stateClass = (signal: Signal) => (signal === "none" ? "ready" : signal === "overtime" ? "disqualified" : signal)
 
 const timedKinds: SegmentKind[] = ["prepared_speeches", "table_topics", "evaluations"]
 const sortedItems = (segment: Segment) => [...segment.items].sort((a, b) => a.order - b.order)
 const timerStateOf = (record?: TimedRecord): TimerState => stateOf(record?.actions ?? [])
+const rangeText = (item: AgendaItem) => `${activityLabel(item.role)} ${formatClock(item.timing.green * 1000)} to ${formatClock(item.timing.red * 1000)}`
 
-export function TimerScreen({
-  data,
-  readOnly,
-  selectedId,
-  select,
-  notify,
-  openMeeting,
-}: {
+type Props = {
   data: AppData & { meeting: Meeting }
   readOnly: boolean
   selectedId?: string
   select: (id?: string) => void
   notify: (message: string) => void
   openMeeting: () => void
-}) {
+}
+
+export function TimerScreen({ data, readOnly, selectedId, select, notify, openMeeting }: Props) {
   const { meeting, records, settings, rules } = data
   const recordFor = useMemo(() => new Map(records.map(record => [record.agendaItemId, record])), [records])
+  const statusOf = (item: AgendaItem) => timerStateOf(recordFor.get(item.id)).status
+
+  // Which segment and person are on screen: the selection, else whoever is timing, else the next to time.
   const segments = meeting.segments.filter(segment => timedKinds.includes(segment.kind) || segment.items.length)
-  const selectedSegment = segments.find(segment => segment.items.some(item => item.id === selectedId))
-  const runningSegment = segments.find(segment => segment.items.some(item => timerStateOf(recordFor.get(item.id)).status === "running"))
+  const runningSegment = segments.find(segment => segment.items.some(item => statusOf(item) === "running"))
   const [segmentId, setSegmentId] = useState<string>()
-  const segment = segments.find(s => s.id === segmentId) ?? selectedSegment ?? runningSegment ?? segments[0]
+  const segment = segments.find(s => s.id === segmentId) ?? segments.find(s => s.items.some(item => item.id === selectedId)) ?? runningSegment ?? segments[0]
   const items = sortedItems(segment)
   const item =
-    items.find(i => i.id === selectedId) ??
-    items.find(i => ["running", "paused"].includes(timerStateOf(recordFor.get(i.id)).status)) ??
-    items.find(i => timerStateOf(recordFor.get(i.id)).status !== "stopped")
+    items.find(i => i.id === selectedId) ?? items.find(i => ["running", "paused"].includes(statusOf(i))) ?? items.find(i => statusOf(i) !== "stopped")
+  const upNext = items.filter(i => i.id !== item?.id && statusOf(i) === "idle")
+  const next = upNext[0]
+
   const record = item && recordFor.get(item.id)
   const timer = item && timerFor(item, rules.withinRule, record?.actions)
   const state = timerStateOf(record)
-  const running = state.status === "running"
-  const now = useSecondTicks(running, record?.actions)
+  const status = state.status
+  const now = useSecondTicks(status === "running", record?.actions)
   const elapsed = timer ? timer.elapsedMs(now) : 0
   const signal: Signal = timer ? timer.signal(now) : "none"
-  const upNext = items.filter(i => i.id !== item?.id && timerStateOf(recordFor.get(i.id)).status !== "stopped")
+  const presentation = signalPresentation[signal]
+
   const [sheet, setSheet] = useState<"guest" | "edit">()
   const [display, setDisplay] = useState(false)
-  const anyRunning = !!runningSegment
-
-  useWakeLock(anyRunning || display)
-  useThresholdCues(timer, settings)
+  const announcement = useSignalEvents(timer, settings)
+  useWakeLock(meeting.status === "live" || !!runningSegment || display)
 
   const act = async (input: ActionInput) => {
     if (!item || !timer || readOnly) return
     unlockAudio()
+    // Keep this person on screen after Stop, until the Timer moves on.
+    if (selectedId !== item.id) select(item.id)
     await dispatchAndSave(meeting.id, item.id, timer, input)
   }
+  const goNext = () => next && select(next.id)
+  /** Start, then Stop, then move on: the one button the Timer's thumb rests on. */
   const primary = () => {
-    if (state.status === "idle") {
+    if (status === "idle") {
       // Only one speaker runs at a time: starting someone pauses whoever is running.
-      const other = meeting.segments.flatMap(s => s.items).find(i => i.id !== item?.id && timerStateOf(recordFor.get(i.id)).status === "running")
+      const other = meeting.segments.flatMap(s => s.items).find(i => i.id !== item?.id && statusOf(i) === "running")
       if (other) void dispatchAndSave(meeting.id, other.id, timerFor(other, rules.withinRule, recordFor.get(other.id)?.actions), { type: "pause" })
-      return act({ type: "start" })
+      return void act({ type: "start" })
     }
-    if (state.status === "running") return act({ type: "pause" })
-    if (state.status === "paused") return act({ type: "resume" })
+    if (status === "running" || status === "paused") return void act({ type: "stop" })
+    goNext()
   }
   const reset = () => {
-    if (state.status === "stopped" && !confirm(`Reset ${item?.personName}'s recorded time? You can undo this.`)) return
+    if (status === "stopped" && !confirm(`Reset ${item?.personName}'s recorded time? You can undo this.`)) return
     void act({ type: "reset" }).then(() => notify("Timer reset. Undo is available."))
   }
-  const selectSegment = (next: Segment) => {
-    setSegmentId(next.id)
-    select(undefined)
-  }
+  const offset = (seconds: number) => void act({ type: "offset", ms: seconds * 1000 })
+  const undo = () => void act({ type: "undo" })
+
+  useKeyboardShortcuts(!sheet && !display && !readOnly && !!item, {
+    " ": primary,
+    n: () => status !== "running" && status !== "paused" && goNext(),
+    u: () => timer?.canUndo() && undo(),
+    "1": () => status !== "idle" && offset(5),
+    "2": () => status !== "idle" && offset(10),
+    "3": () => status !== "idle" && offset(30),
+  })
 
   if (display) return <SpeakerDisplay elapsed={elapsed} signal={signal} exit={() => setDisplay(false)} />
 
-  const info = signalText[signal]
-  const stopped = state.status === "stopped"
+  const stopped = status === "stopped"
+  const result: TimeResult | undefined = stopped && timer ? timer.result(now) : undefined
+  const primaryLabel = status === "idle" ? "Start" : status === "running" || status === "paused" ? "Stop" : next ? "Next speaker" : "All recorded"
+
   return (
-    <section className={`screen timer-screen state-${stateClass(signal)}`}>
+    <section className="screen ts-screen" aria-labelledby="timer-person">
       <div className="segment-tabs" role="tablist" aria-label="Meeting segments">
         {segments.map(s => (
-          <button key={s.id} role="tab" aria-selected={s.id === segment.id} className={s.id === segment.id ? "selected" : ""} onClick={() => selectSegment(s)}>
+          <button
+            key={s.id}
+            role="tab"
+            aria-selected={s.id === segment.id}
+            className={s.id === segment.id ? "selected" : ""}
+            onClick={() => {
+              setSegmentId(s.id)
+              select(undefined)
+            }}
+          >
             {segmentLabels[s.kind]}
           </button>
         ))}
       </div>
-      <div className="speaker-card">
-        <div className="speaker-meta">
-          <span className="eyebrow">{!item ? "Ready when you are" : state.status === "idle" ? "Ready to time" : stopped ? "Recorded" : "Now timing"}</span>
-          <span className={`status-dot ${state.status}`}>{state.status === "idle" ? "Queued" : state.status}</span>
-        </div>
-        <h1>{item?.personName || "Add someone to this segment"}</h1>
-        <p>
-          {item
-            ? `${roleLabels[item.role]} · ${formatClock(item.timing.green * 1000)} to ${formatClock(item.timing.red * 1000)}`
-            : `${items.length} in ${segmentLabels[segment.kind]}`}
-        </p>
-        {item && (
-          <div className="thresholds">
-            <span>
-              <b>G</b>
-              {formatClock(item.timing.green * 1000)}
-            </span>
-            <span>
-              <b>A</b>
-              {formatClock(item.timing.amber * 1000)}
-            </span>
-            <span>
-              <b>R</b>
-              {formatClock(item.timing.red * 1000)}
-            </span>
-          </div>
-        )}
-      </div>
-      <div className="timer-panel">
-        <div className="timer-state">
-          <i className={`signal ${stateClass(signal)}`} aria-hidden="true" />
-          <div>
-            <b>{info.label}</b>
-            <small>{info.hint}</small>
-          </div>
-          <button className="display-button" onClick={() => setDisplay(true)} aria-label="Open speaker display">
-            <Maximize2 size={20} />
+
+      <header className="ts-person">
+        <h1 id="timer-person">{item?.personName || `No one in ${segmentLabels[segment.kind]}`}</h1>
+        {item ? (
+          <p className="ts-range">{rangeText(item)}</p>
+        ) : (
+          <button className="text-button ts-open-agenda" onClick={openMeeting}>
+            Add people on the Meeting screen
           </button>
-        </div>
-        <div
-          className="progress-ring"
-          style={{ "--progress": `${item ? Math.min(100, (elapsed / (item.timing.red * 1000)) * 100) : 0}%` } as React.CSSProperties}
-        >
-          <div className="timer-number">{formatClock(elapsed)}</div>
-        </div>
-        {settings.signalPatterns && (
-          <div className="pattern-cue" aria-hidden="true">
-            {info.cue}
-          </div>
         )}
-        <p className="visually-hidden" role="status" aria-live="assertive">
-          {state.status === "idle" ? "" : `${info.label}. ${info.hint}.`}
+        <p className="ts-next">
+          Next: <b>{next?.personName ?? "no one"}</b>
         </p>
-      </div>
-      {stopped && item && (
-        <div className="recorded-summary">
-          <span>
-            Recorded {formatClock(elapsed)} · {resultLabels[timer!.result(now)]}
+      </header>
+
+      <div className={`ts-stage signal-${signal}`} role="timer" aria-label={`${formatClock(elapsed)} elapsed. Signal ${presentation.label.toLowerCase()}.`}>
+        <div className="ts-signal">
+          <SignalIcon signal={signal} size={30} />
+          <span className="ts-signal-label">{presentation.label}</span>
+        </div>
+        <div className="ts-clock" aria-hidden="true">
+          {formatClock(elapsed)}
+        </div>
+        {result ? (
+          // After Stop the hint line becomes the result, so nothing pushes the controls down.
+          <p className={`ts-hint ts-result result-${result}`}>
+            <Check size={18} aria-hidden="true" />
+            Recorded {formatClock(elapsed)} · {resultLabels[result]}
             {record?.edits.length ? " · edited" : ""}
-          </span>
-          <button className="secondary-button" onClick={() => setSheet("edit")} disabled={readOnly}>
-            <PencilLine size={18} />
-            Edit time
+          </p>
+        ) : (
+          <p className="ts-hint" aria-hidden="true">
+            {status === "paused" ? "Paused" : presentation.hint}
+          </p>
+        )}
+        <button className="ts-display-button" onClick={() => setDisplay(true)} aria-label="Open speaker display">
+          <Maximize2 size={20} aria-hidden="true" />
+        </button>
+      </div>
+      <p className="visually-hidden" role="status" aria-live="assertive" aria-atomic="true">
+        {announcement}
+      </p>
+
+      <div className="ts-controls">
+        <div className="ts-adjust" role="group" aria-label="Adjust time">
+          {[5, 10, 30, -5].map(seconds => (
+            <button
+              key={seconds}
+              onClick={() => offset(seconds)}
+              disabled={!item || readOnly || status === "idle"}
+              aria-label={`${seconds > 0 ? "Add" : "Subtract"} ${Math.abs(seconds)} seconds`}
+            >
+              {seconds > 0 ? `+${seconds}` : `−${-seconds}`} s
+            </button>
+          ))}
+        </div>
+        <div className="ts-secondary">
+          <button onClick={undo} disabled={!timer || readOnly || !timer.canUndo()}>
+            <Undo2 size={18} aria-hidden="true" />
+            Undo
           </button>
-          {upNext[0] && (
-            <button className="primary-button" onClick={() => select(upNext[0].id)}>
-              Next speaker
-              <ChevronRight size={18} />
+          <button onClick={reset} disabled={!item || readOnly || status === "idle"}>
+            <RotateCcw size={18} aria-hidden="true" />
+            Reset
+          </button>
+          {stopped ? (
+            <button onClick={() => setSheet("edit")} disabled={readOnly}>
+              <PencilLine size={18} aria-hidden="true" />
+              Edit time
+            </button>
+          ) : (
+            <button
+              onClick={() => void act({ type: status === "paused" ? "resume" : "pause" })}
+              disabled={!item || readOnly || (status !== "running" && status !== "paused")}
+            >
+              {status === "paused" ? <Play size={18} aria-hidden="true" /> : <Pause size={18} aria-hidden="true" />}
+              {status === "paused" ? "Resume" : "Pause"}
             </button>
           )}
-        </div>
-      )}
-      <div className="timer-actions">
-        <button className="primary-button timer-primary" onClick={() => void primary()} disabled={!item || stopped || readOnly}>
-          {running ? (
-            <>
-              <Pause />
-              Pause
-            </>
-          ) : (
-            <>
-              <Play />
-              {state.status === "paused" ? "Resume" : "Start"}
-            </>
-          )}
-        </button>
-        <button
-          className="secondary-button stop"
-          onClick={() => void act({ type: "stop" })}
-          disabled={!item || readOnly || (state.status !== "running" && state.status !== "paused")}
-        >
-          <Square />
-          Stop
-        </button>
-      </div>
-      <div className="catchups">
-        <span>Adjust</span>
-        {[5, 10, 30, -5].map(seconds => (
-          <button
-            key={seconds}
-            onClick={() => void act({ type: "offset", ms: seconds * 1000 })}
-            disabled={!item || readOnly || state.status === "idle"}
-            aria-label={`${seconds > 0 ? "Add" : "Subtract"} ${Math.abs(seconds)} seconds`}
-          >
-            {seconds > 0 ? `+${seconds}` : `−${-seconds}`} s
-          </button>
-        ))}
-      </div>
-      <div className="timer-footer">
-        <button onClick={reset} disabled={!item || readOnly || state.status === "idle"}>
-          <RotateCcw size={16} />
-          Reset
-        </button>
-        <button onClick={() => void act({ type: "undo" })} disabled={!timer || readOnly || !timer.canUndo()}>
-          <Undo2 size={16} />
-          Undo
-        </button>
-      </div>
-      <section className="up-next">
-        <div className="section-head">
-          <div>
-            <span className="eyebrow">Up next</span>
-            <h2>{upNext[0]?.personName || "No one queued"}</h2>
-            {upNext[0] && <p className="next-role">{roleLabels[upNext[0].role]}</p>}
-          </div>
-          <button className="text-button" onClick={openMeeting}>
-            Agenda
-            <ChevronRight size={16} />
+          <button aria-pressed={settings.silent} onClick={() => void repo.settings.update({ silent: !settings.silent })}>
+            {settings.silent ? <BellOff size={18} aria-hidden="true" /> : <Bell size={18} aria-hidden="true" />}
+            Silent
           </button>
         </div>
-        {upNext.slice(0, 2).map(next => (
-          <button className="queue-preview" key={next.id} onClick={() => select(next.id)}>
-            <span className="initials">{initials(next.personName)}</span>
-            <span>
-              <b>{next.personName}</b>
-              <small>{roleLabels[next.role]}</small>
-            </span>
-            <ChevronRight className="push" size={18} />
-          </button>
-        ))}
-        {segment.kind === "table_topics" ? (
-          <button className="primary-button add-empty" onClick={() => setSheet("guest")} disabled={readOnly}>
-            <UserPlus />
+        {segment.kind === "table_topics" && (
+          <button className="secondary-button ts-guest" onClick={() => setSheet("guest")} disabled={readOnly}>
+            <UserPlus size={18} aria-hidden="true" />
             Add guest
           </button>
-        ) : (
-          !upNext.length && (
-            <button className="primary-button add-empty" onClick={openMeeting}>
-              <Plus />
-              Add to agenda
-            </button>
-          )
         )}
-      </section>
+        <button className={`ts-primary ts-primary-${status}`} onClick={primary} disabled={!item || readOnly || (stopped && !next)}>
+          {status === "idle" ? <Play aria-hidden="true" /> : stopped ? <ChevronRight aria-hidden="true" /> : <Square aria-hidden="true" />}
+          {primaryLabel}
+        </button>
+      </div>
+
       {sheet === "guest" && (
         <GuestSheet
           data={data}
           close={() => setSheet(undefined)}
-          added={(id, start) => {
+          added={(id, started) => {
             select(id)
             setSheet(undefined)
-            notify(start ? "Guest added and timing started" : "Guest added to Table Topics")
+            notify(started ? "Guest added and timing started" : "Guest added to Table Topics")
           }}
         />
       )}
@@ -285,14 +237,6 @@ export function TimerScreen({
   )
 }
 
-const initials = (name: string) =>
-  name
-    .split(/\s+/)
-    .map(part => part[0] ?? "")
-    .slice(0, 2)
-    .join("")
-    .toUpperCase()
-
 /** Applies an action through the engine (which emits events), then persists it. */
 async function dispatchAndSave(meetingId: string, itemId: string, timer: Timer, input: ActionInput) {
   const action = timer.dispatch(input)
@@ -300,20 +244,54 @@ async function dispatchAndSave(meetingId: string, itemId: string, timer: Timer, 
 }
 
 /**
- * Vibrates and beeps when the engine reports that a running timer moved up to
- * a higher signal. Loading a stored timer (reload, selection) emits nothing.
+ * Reacts to the engine's signalChanged events: announces every change to
+ * screen readers, and vibrates or beeps when a running timer moves up a
+ * signal (unless silent). Loading a stored timer emits nothing, so a reload
+ * or selecting a recorded speaker never buzzes. Returns the announcement.
  */
-function useThresholdCues(timer: Timer | undefined, settings: AppData["settings"]) {
+function useSignalEvents(timer: Timer | undefined, settings: AppData["settings"]) {
+  const [announcement, setAnnouncement] = useState("")
+  const cues = useRef(settings)
+  useEffect(() => {
+    cues.current = settings
+  }, [settings])
   useEffect(() => {
     if (!timer) return
     return timer.on(event => {
-      if (event.type !== "signalChanged" || timer.state().status !== "running" || signalRank(event.to) <= signalRank(event.from)) return
-      if (settings.vibration) navigator.vibrate?.([90, 50, 90])
-      if (settings.sound) playThresholdTone()
+      if (event.type !== "signalChanged") return
+      setAnnouncement(signalAnnouncement(event.to))
+      const { silent, vibration, sound } = cues.current
+      if (silent || timer.state().status !== "running" || signalRank(event.to) <= signalRank(event.from)) return
+      if (vibration) navigator.vibrate?.([90, 50, 90])
+      if (sound) playThresholdTone()
     })
-  }, [timer, settings.vibration, settings.sound])
+  }, [timer])
   // Renders happen on whole seconds of elapsed time; let the engine evaluate each one.
   useEffect(() => timer?.tick())
+  return announcement
+}
+
+/** Single-key shortcuts for laptops. Ignored while typing or with modifier keys. */
+function useKeyboardShortcuts(enabled: boolean, handlers: Record<string, () => unknown>) {
+  const latest = useRef(handlers)
+  useLayoutEffect(() => {
+    latest.current = handlers
+  })
+  // Layout effects run right after the screen updates, so no key press can arrive before the listener.
+  useLayoutEffect(() => {
+    if (!enabled) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return
+      const target = event.target as HTMLElement | null
+      if (target?.closest("input, textarea, select, [contenteditable='true'], [role='dialog']")) return
+      const handler = latest.current[event.key.toLowerCase()]
+      if (!handler) return
+      event.preventDefault() // Space must not also click the focused button or scroll the page.
+      handler()
+    }
+    document.addEventListener("keydown", onKey)
+    return () => document.removeEventListener("keydown", onKey)
+  }, [enabled])
 }
 
 function GuestSheet({ data, close, added }: { data: AppData & { meeting: Meeting }; close: () => void; added: (id: string, started: boolean) => void }) {
@@ -344,11 +322,11 @@ function GuestSheet({ data, close, added }: { data: AppData & { meeting: Meeting
       </datalist>
       <div className="sheet-actions">
         <button className="secondary-button sheet-submit" onClick={() => void add(false)}>
-          <Plus />
+          <UserPlus aria-hidden="true" />
           Add guest
         </button>
         <button className="primary-button sheet-submit" onClick={() => void add(true)}>
-          <Play />
+          <Play aria-hidden="true" />
           Add and start
         </button>
       </div>
@@ -380,13 +358,15 @@ function EditSheet({ elapsed, close, save }: { elapsed: number; close: () => voi
   )
 }
 
+/** Temporary full-screen view; phase 5 replaces it with the synced speaker display. */
 function SpeakerDisplay({ elapsed, signal, exit }: { elapsed: number; signal: Signal; exit: () => void }) {
-  const info = signalText[signal]
   return (
-    <button className={`speaker-display state-${stateClass(signal)}`} onClick={exit} aria-label="Exit speaker display">
+    <button className={`speaker-display signal-${signal}`} onClick={exit} aria-label="Exit speaker display">
       <span>{formatClock(elapsed)}</span>
-      <small>{info.cue} · Tap to exit</small>
-      <Minimize2 />
+      <small>
+        <SignalIcon signal={signal} size={22} /> {signalPresentation[signal].label} · Tap to exit
+      </small>
+      <Minimize2 aria-hidden="true" />
     </button>
   )
 }

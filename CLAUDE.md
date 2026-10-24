@@ -35,7 +35,7 @@ src/engine/    pure logic: no React, no DOM, no storage. The clock is always inj
 src/storage/   db.ts (Dexie schema), repository.ts (the only code that touches IndexedDB),
                schema.ts (zod export format), export-import.ts, migrate-legacy.ts (v1 → v2, once)
 src/ui/        App.tsx (shell + hash routes), hooks.ts, components.tsx, runtime.ts (db, repo, clock),
-               timers.ts (one engine timer per agenda item), screens/
+               timers.ts (one engine timer per agenda item), signals.tsx (label, icon, pattern per signal), screens/
 test-vectors/  timing.json: shared timing scenarios, also run by the device firmware
 tests/e2e/     Playwright specs
 docs/          AUDIT.md, TIMING_SPEC.md (normative timing rules for app and firmware)

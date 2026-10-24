@@ -62,6 +62,7 @@ const template = z.object({ id: z.string(), clubId: z.string().optional(), name:
 const settings = z.object({
   sound: z.boolean(),
   vibration: z.boolean(),
+  silent: z.boolean().default(false),
   signalPatterns: z.boolean(),
   theme: z.enum(["system", "light", "dark"]),
   profileOverrides: z.record(z.string(), profile),

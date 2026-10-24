@@ -1065,7 +1065,7 @@ button:disabled {
   z-index: 20;
   inset: 0;
   width: 100vw;
-  height: 100vh;
+  height: 100dvh;
   border: 0;
   color: #fff;
   background: #172033;
@@ -1486,4 +1486,270 @@ select:focus-visible {
 }
 .meeting-screen .screen-title {
   gap: 12px;
+}
+
+/* ---------- Timer screen (phase 4) ---------- */
+:root {
+  --sig-none-bg: var(--surface);
+  --sig-none-fg: var(--text);
+  --sig-green-bg: #0b6b3a;
+  --sig-green-fg: #ffffff;
+  --sig-amber-bg: #ffb400;
+  --sig-amber-fg: #1a1a1a;
+  --sig-red-bg: #b0001c;
+  --sig-red-fg: #ffffff;
+  --sig-over-bg: #5c0011;
+  --sig-over-fg: #ffffff;
+  --sig-dq-bg: #2b2b2b;
+  --sig-dq-fg: #ffffff;
+}
+.ts-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  /* Fill the viewport so the controls sit at thumb height above the navigation. */
+  min-height: calc(100dvh - 64px - 104px - env(safe-area-inset-bottom));
+  padding-top: 12px;
+}
+.ts-person h1 {
+  margin: 0;
+  font-size: clamp(24px, 6.5vw, 34px);
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+.ts-range {
+  margin: 4px 0 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text);
+}
+.ts-next {
+  margin: 2px 0 0;
+  font-size: 15px;
+  color: var(--muted);
+}
+.ts-next b {
+  color: var(--text);
+}
+.ts-stage {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 20px 16px 18px;
+  border-radius: 24px;
+  border: 2px solid var(--border);
+  background-color: var(--sig-none-bg);
+  color: var(--sig-none-fg);
+  transition: background-color 0.2s ease;
+}
+/* Each signal: its own colour AND its own pattern AND (in markup) its own icon and word. */
+.ts-stage.signal-green,
+.speaker-display.signal-green {
+  background-color: var(--sig-green-bg);
+  color: var(--sig-green-fg);
+  border-color: transparent;
+  background-image: radial-gradient(rgb(255 255 255 / 0.14) 2px, transparent 2.5px);
+  background-size: 18px 18px;
+}
+.ts-stage.signal-amber,
+.speaker-display.signal-amber {
+  background-color: var(--sig-amber-bg);
+  color: var(--sig-amber-fg);
+  border-color: transparent;
+  background-image: repeating-linear-gradient(45deg, rgb(0 0 0 / 0.09) 0 10px, transparent 10px 22px);
+}
+.ts-stage.signal-red,
+.speaker-display.signal-red {
+  background-color: var(--sig-red-bg);
+  color: var(--sig-red-fg);
+  border-color: transparent;
+  background-image: repeating-linear-gradient(0deg, rgb(255 255 255 / 0.1) 0 6px, transparent 6px 16px);
+}
+.ts-stage.signal-overtime,
+.speaker-display.signal-overtime {
+  background-color: var(--sig-over-bg);
+  color: var(--sig-over-fg);
+  border-color: transparent;
+  background-image:
+    repeating-linear-gradient(45deg, rgb(255 255 255 / 0.12) 0 8px, transparent 8px 18px),
+    repeating-linear-gradient(-45deg, rgb(255 255 255 / 0.12) 0 8px, transparent 8px 18px);
+  animation: ts-overtime-flash 1s steps(2, jump-none) infinite;
+}
+.ts-stage.signal-disqualified,
+.speaker-display.signal-disqualified {
+  background-color: var(--sig-dq-bg);
+  color: var(--sig-dq-fg);
+  border-color: transparent;
+  background-image: repeating-linear-gradient(90deg, rgb(255 255 255 / 0.1) 0 4px, transparent 4px 12px);
+}
+@keyframes ts-overtime-flash {
+  from {
+    background-color: var(--sig-over-bg);
+  }
+  to {
+    background-color: var(--sig-red-bg);
+  }
+}
+.ts-signal {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.ts-signal-label {
+  font-size: clamp(22px, 6vw, 30px);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+.ts-clock {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: clamp(88px, 27vw, 176px);
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+.ts-hint {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+.ts-display-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 14px;
+  color: inherit;
+  background: rgb(127 127 127 / 0.18);
+}
+.ts-result {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgb(127 127 127 / 0.2);
+  font-weight: 800;
+}
+.ts-controls {
+  margin-top: auto;
+  display: grid;
+  gap: 10px;
+}
+.ts-adjust,
+.ts-secondary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.ts-adjust button,
+.ts-secondary button {
+  min-height: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 6px;
+  border: 2px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 700;
+  font-size: 15px;
+}
+.ts-secondary button {
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+}
+.ts-secondary button[aria-pressed="true"] {
+  border-color: var(--text);
+  background: var(--muted-surface);
+}
+.ts-guest {
+  min-height: 52px;
+}
+.ts-primary {
+  min-height: 76px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 20px;
+  font-size: 24px;
+  font-weight: 800;
+  color: #fff;
+  background: var(--blue);
+  box-shadow: var(--shadow);
+}
+.ts-primary svg {
+  width: 28px;
+  height: 28px;
+}
+.ts-primary-running,
+.ts-primary-paused {
+  background: var(--navy);
+}
+html[data-theme="dark"] .ts-primary-running,
+html[data-theme="dark"] .ts-primary-paused {
+  background: #f2f5fa;
+  color: #0e1524;
+}
+.ts-screen :focus-visible {
+  outline: 3px solid var(--blue);
+  outline-offset: 3px;
+}
+html[data-theme="dark"] .ts-screen :focus-visible {
+  outline-color: #8fb8ff;
+}
+.speaker-display.signal-none {
+  background: #172033;
+}
+.speaker-display small {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+@media (min-width: 640px) {
+  .ts-screen {
+    min-height: calc(100dvh - 56px - 64px);
+    max-width: 720px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ts-stage,
+  .speaker-display {
+    transition: none;
+    animation: none !important;
+  }
+}
+.ts-open-agenda {
+  min-height: 48px;
+}
+/* Short phones: everything from the name to the Start button fits above the navigation. */
+@media (max-width: 639px) and (max-height: 820px) {
+  .app-header {
+    height: 52px;
+  }
+  .ts-screen {
+    gap: 8px;
+    padding-top: 4px;
+    min-height: calc(100dvh - 52px - 104px - env(safe-area-inset-bottom));
+  }
+  .ts-stage {
+    padding: 12px 12px 10px;
+  }
+  .ts-controls {
+    gap: 8px;
+  }
+  .ts-adjust button,
+  .ts-secondary button {
+    min-height: 48px;
+  }
 }

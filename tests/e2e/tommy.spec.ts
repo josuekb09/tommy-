@@ -4,7 +4,7 @@ import AxeBuilder from "@axe-core/playwright"
 const at = (minutes: number, seconds = 0) => `${minutes}:${String(seconds).padStart(2, "0")}`
 const nav = (page: Page, name: "Meeting" | "Timer" | "Report" | "Settings") =>
   page.getByRole("navigation", { name: "Primary navigation" }).getByRole("button", { name, exact: true }).click()
-const expectClock = (page: Page, minutes: number, seconds = 0) => expect(page.locator(".timer-number")).toHaveText(at(minutes, seconds))
+const expectClock = (page: Page, minutes: number, seconds = 0) => expect(page.locator(".ts-clock")).toHaveText(at(minutes, seconds))
 
 /** Installs a fake clock, lets the app start (IndexedDB needs timers), then freezes time for the test. */
 async function openWithFakeClock(page: Page) {
@@ -25,7 +25,7 @@ async function addToAgenda(page: Page, segment: "Prepared speeches" | "Evaluatio
 async function timeItem(page: Page, name: string, ms: number) {
   await nav(page, "Meeting")
   await page.getByRole("button", { name: new RegExp(`^${name}`) }).click()
-  await expect(page.locator(".speaker-card h1")).toHaveText(name)
+  await expect(page.locator("#timer-person")).toHaveText(name)
   await page.getByRole("button", { name: "Start", exact: true }).click()
   await page.clock.runFor(ms)
   await page.getByRole("button", { name: "Stop", exact: true }).click()
@@ -70,7 +70,7 @@ test("full offline-capable meeting: speeches, evaluations and live Table Topics 
     await page.getByRole("button", { name: "Add guest" }).click()
     await page.getByLabel("Name").fill(name)
     await page.getByRole("button", { name: "Add and start" }).click()
-    await expect(page.locator(".speaker-card h1")).toHaveText(name)
+    await expect(page.locator("#timer-person")).toHaveText(name)
     await page.clock.runFor(ms)
     await page.getByRole("button", { name: "Stop", exact: true }).click()
   }
@@ -106,7 +106,7 @@ test("a running timer survives a page reload exactly", async ({ page }) => {
   await page.clock.runFor(123_000)
   await expectClock(page, 2, 3)
   await page.reload()
-  await expect(page.locator(".speaker-card h1")).toHaveText("Persistent Speaker")
+  await expect(page.locator("#timer-person")).toHaveText("Persistent Speaker")
   await expectClock(page, 2, 3)
   await page.clock.runFor(10_000)
   await expectClock(page, 2, 13)
@@ -118,14 +118,14 @@ test("signals change at exact thresholds and are announced in text, not colour a
   await page.getByRole("button", { name: /^Tess Topics/ }).click()
   await page.getByRole("button", { name: "Start", exact: true }).click()
   await page.clock.runFor(59_000)
-  await expect(page.locator(".timer-state b")).toHaveText("Ready")
+  await expect(page.locator(".ts-signal-label")).toHaveText("READY")
   await page.clock.runFor(1_000)
-  await expect(page.locator(".timer-state b")).toHaveText("Green")
-  await expect(page.locator(".pattern-cue")).toHaveText("● GREEN")
+  await expect(page.locator(".ts-signal-label")).toHaveText("GREEN")
+  await expect(page.locator(".ts-signal svg")).toHaveCount(1)
   await page.clock.runFor(30_000)
-  await expect(page.locator(".timer-state b")).toHaveText("Amber")
+  await expect(page.locator(".ts-signal-label")).toHaveText("AMBER")
   await page.clock.runFor(30_000)
-  await expect(page.locator(".timer-state b")).toHaveText("Red")
+  await expect(page.locator(".ts-signal-label")).toHaveText("RED")
   await expect(page.getByRole("status").filter({ hasText: "Time limit reached" })).toHaveCount(1)
 })
 
@@ -210,11 +210,17 @@ for (const [width, height] of [
   test(`layout ${width}x${height}: no horizontal scroll and 48px touch targets`, async ({ page }) => {
     await page.setViewportSize({ width, height })
     await page.goto("/")
-    await expect(page.locator(".timer-number")).toBeVisible()
+    await expect(page.locator(".ts-clock")).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
-    const boxes = await page
-      .locator(".bottom-nav button, .timer-actions button, .catchups button")
-      .evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect()))
+    const boxes = await page.locator(".bottom-nav button, .ts-controls button").evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect()))
     for (const box of boxes) expect(Math.min(box.width, box.height)).toBeGreaterThanOrEqual(44)
+
+    // The main Start/Stop button is big, never hidden behind the navigation, and on phones sits in the thumb zone.
+    const primary = (await page.locator(".ts-primary").boundingBox())!
+    const nav = (await page.locator(".bottom-nav").boundingBox())!
+    expect(primary.height).toBeGreaterThanOrEqual(72)
+    const overlaps = primary.x < nav.x + nav.width && primary.x + primary.width > nav.x && primary.y < nav.y + nav.height && primary.y + primary.height > nav.y
+    expect(overlaps).toBe(false)
+    if (width < 640) expect(primary.y + primary.height).toBeGreaterThan(height * 0.6)
   })
 }

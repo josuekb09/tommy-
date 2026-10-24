@@ -7,6 +7,8 @@ export type Theme = "system" | "light" | "dark"
 export type AppSettings = {
   sound: boolean
   vibration: boolean
+  /** Quick mute on the Timer screen: no sound or vibration, preferences kept. */
+  silent: boolean
   /** Show the pattern/icon cue next to every signal. */
   signalPatterns: boolean
   theme: Theme

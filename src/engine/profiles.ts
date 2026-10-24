@@ -92,6 +92,10 @@ export const roleLabels: Record<AgendaRole, string> = {
   Other: "Other",
 }
 
+/** What is being timed, for headings such as "Speech 5:00 to 7:00". */
+export const activityLabel = (role: AgendaRole) =>
+  role === "Speaker" ? "Speech" : role === "Evaluator" ? "Evaluation" : role === "TableTopicsSpeaker" ? "Table Topics" : roleLabels[role]
+
 export const formatClock = (ms: number) => {
   const total = Math.floor(Math.max(0, ms) / 1000)
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`
