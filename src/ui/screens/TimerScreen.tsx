@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { Bell, BellOff, Check, ChevronRight, Maximize2, Minimize2, Pause, PencilLine, Play, RotateCcw, Square, Undo2, UserPlus } from "lucide-react"
 import type { AgendaItem, Meeting, Segment, SegmentKind, Signal, TimedRecord, TimeResult } from "../../domain"
-import { activityLabel, formatClock, parseClock, profileFor, segmentLabels } from "../../engine/profiles"
+import { activityLabel, formatClock, parseClock, profileFor, rangeLabel, segmentLabels } from "../../engine/profiles"
 import { signalRank, stateOf, type ActionInput, type Timer, type TimerState } from "../../engine/timing"
 import { resultLabels } from "../../engine/report"
 import { playThresholdTone, unlockAudio } from "../../engine/audio"
@@ -14,7 +14,7 @@ import { timerFor } from "../timers"
 const timedKinds: SegmentKind[] = ["prepared_speeches", "table_topics", "evaluations"]
 const sortedItems = (segment: Segment) => [...segment.items].sort((a, b) => a.order - b.order)
 const timerStateOf = (record?: TimedRecord): TimerState => stateOf(record?.actions ?? [])
-const rangeText = (item: AgendaItem) => `${activityLabel(item.role)} ${formatClock(item.timing.green * 1000)} to ${formatClock(item.timing.red * 1000)}`
+const rangeText = (item: AgendaItem) => `${activityLabel(item.role)} ${rangeLabel(item.timing)}`
 
 type Props = {
   data: AppData & { meeting: Meeting }
@@ -304,7 +304,8 @@ function GuestSheet({ data, close, added }: { data: AppData & { meeting: Meeting
     const item = await repo.meetings.addItem(data.meeting.id, "table_topics", {
       role: "TableTopicsSpeaker",
       personName,
-      timing: profileFor("TableTopicsSpeaker", data.rules, data.settings.profileOverrides),
+      profileId: "table_topics",
+      timing: profileFor("TableTopicsSpeaker", data.rules, data.clubProfiles),
     })
     if (start) await dispatchAndSave(data.meeting.id, item.id, timerFor(item, data.rules.withinRule), { type: "start" })
     added(item.id, start)

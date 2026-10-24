@@ -68,38 +68,64 @@ elapsed(now) = overrideMs                                          if set
 ## 3. Profiles and signals
 
 ```
-profile = { green, amber, red, graceSeconds, disqualifyEnabled }   // seconds, seconds, seconds, seconds, bool
+profile = {
+  green, amber, red,            // seconds
+  graceSeconds,                 // seconds after red (and before green, unless graceUnderSeconds is set)
+  disqualifyEnabled,            // bool: contest rules
+  graceUnderSeconds?,           // seconds before green; default graceSeconds (Table Topics contests: 0)
+  redOnly?,                     // bool, default false: only a red limit, no green/amber, no minimum time
+  redAt?,                       // "reach" (default) | "exceed": red at t ≥ red, or only at t > red
+  overtime?                     // "afterGrace" (default) | "never": stay on red instead of showing overtime
+}
 ```
 
-Signal for an elapsed time `t` (ms), checked from top to bottom:
+- **A missing optional field means its default.**
+- **The host resolves club rules into these fields before timing:** the grace length, the Table Topics exception, the amber rule, red on reaching or exceeding, and the overtime behaviour. The engine never looks at club settings.
+- **In a red-only profile,** green and amber are stored equal to red and are ignored.
+
+Let `limit = (red + graceSeconds) × 1000` and `exceed = (redAt == "exceed")`. The signal for an elapsed time `t` (ms) is the first row that matches, from top to bottom:
 
 | Condition | Signal |
 |---|---|
 | status is `idle` | `none` |
-| t > (red + grace) × 1000 | `disqualified` if disqualifyEnabled, otherwise `overtime` |
-| t ≥ red × 1000 | `red` |
+| t > limit and disqualifyEnabled | `disqualified` |
+| t > limit and overtime ≠ "never" and not (exceed and graceSeconds = 0) | `overtime` |
+| exceed ? t > red × 1000 : t ≥ red × 1000 | `red` |
+| redOnly | `none` |
 | t ≥ amber × 1000 | `amber` |
 | t ≥ green × 1000 | `green` |
 | otherwise | `none` |
 
-- **Each signal starts exactly at its threshold.** For a 5:00 green, `299 999 → none` and `300 000 → green`.
+- **Each signal starts exactly at its threshold.** For a 5:00 green, `299 999 → none` and `300 000 → green`. With `redAt: "exceed"`, red starts 1 ms after the maximum.
 - **Overtime starts 1 ms after the grace period ends.** This matches the contest qualification boundary below.
-- **Table Topics normally has a grace period of 0.** The club setting decides. The profile already contains the resolved grace value.
+- **With red-on-exceed and no grace,** red itself is the final signal, because an immediate overtime would hide it.
+- **Table Topics normally has a grace period of 0.** The club setting decides, and the profile already contains the resolved value.
 
 The device shows the signal colour and must always show a non-colour cue as well (text, icon or pattern). Signals never rely on colour alone.
 
 ## 4. Results
 
-The club's within-time rule is either `strict` or `grace`. Let `g = graceSeconds` under `grace` and `g = 0` under `strict`.
+The club's within-time rule is either `strict` or `grace`. Contest profiles (`disqualifyEnabled`) always use the grace window.
 
 ```
-min = max(0, green − g) × 1000
-max = (red + g) × 1000
-result = under   if t < min
-         over    if t > max
-         within  otherwise          // both edges are within
+useGrace = (rule == "grace") or disqualifyEnabled
+over     = useGrace ? graceSeconds : 0
+under    = useGrace ? (graceUnderSeconds ?? graceSeconds) : 0
+min      = redOnly ? 0 : max(0, green − under) × 1000
+max      = (red + over) × 1000
+result   = under   if t < min
+           over    if t > max
+           within  otherwise          // both edges are within
 if disqualifyEnabled and result ≠ within: result = disqualified
 ```
+
+Examples with the default 30-second grace:
+
+| Profile | Qualifies (inclusive) |
+|---|---|
+| Speech contest, 5 to 7 min | 4:30.000 to 7:30.000 |
+| Evaluation contest, 2 to 3 min | 1:30.000 to 3:30.000 |
+| Table Topics contest, 1 to 2 min (graceUnderSeconds 0) | 1:00.000 to 2:30.000 |
 
 ## 5. Events
 

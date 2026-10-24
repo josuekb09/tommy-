@@ -30,6 +30,8 @@ export type AgendaItem = {
   pathwaysProject?: string
   /** For evaluators: the agenda item of the speech being evaluated. */
   evaluatesItemId?: string
+  /** The library profile this item's timing came from, if any. */
+  profileId?: string
   timing: TimingProfile
 }
 

@@ -1,7 +1,17 @@
 import { z } from "zod"
 import { agendaRoles, type AppSettings, type Club, type Guest, type Meeting, type Member, type TimedRecord, type Template } from "../domain"
 
-const profile = z.object({ green: z.number(), amber: z.number(), red: z.number(), graceSeconds: z.number(), disqualifyEnabled: z.boolean() })
+const profile = z.object({
+  green: z.number(),
+  amber: z.number(),
+  red: z.number(),
+  graceSeconds: z.number(),
+  disqualifyEnabled: z.boolean(),
+  graceUnderSeconds: z.number().optional(),
+  redOnly: z.boolean().optional(),
+  redAt: z.enum(["reach", "exceed"]).optional(),
+  overtime: z.enum(["afterGrace", "never"]).optional(),
+})
 const signal = z.enum(["none", "green", "amber", "red", "overtime", "disqualified"])
 const action = z.discriminatedUnion("type", [
   z.object({ type: z.enum(["start", "pause", "resume", "stop", "reset", "undo"]), at: z.number() }),
@@ -17,6 +27,7 @@ const item = z.object({
   speechTitle: z.string().optional(),
   pathwaysProject: z.string().optional(),
   evaluatesItemId: z.string().optional(),
+  profileId: z.string().optional(),
   timing: profile,
 })
 const segment = z.object({
@@ -48,14 +59,37 @@ const record = z.object({
   signalReached: signal,
   legacy: z.boolean().optional(),
 })
+// Defaults let files saved before a rule existed still import.
 const rules = z.object({
+  graceEnabled: z.boolean().default(true),
   graceSeconds: z.number(),
   graceAppliesToTableTopics: z.boolean(),
   withinRule: z.enum(["strict", "grace"]),
+  amberRule: z.enum(["printed", "midpoint", "beforeRed"]).default("printed"),
+  amberBeforeRedSeconds: z.number().default(60),
+  redAt: z.enum(["reach", "exceed"]).default("reach"),
+  overtime: z.enum(["afterGrace", "never"]).default("afterGrace"),
   contestMode: z.boolean(),
   reportStyle: z.enum(["exact", "category"]),
 })
-const club = z.object({ id: z.string(), name: z.string(), number: z.string().optional(), district: z.string().optional(), defaultRules: rules })
+const definition = z.object({
+  id: z.string(),
+  name: z.string(),
+  category: z.enum(["speech", "evaluation", "table_topics", "role", "contest", "custom"]),
+  green: z.number().optional(),
+  amber: z.number().optional(),
+  red: z.number(),
+  redOnly: z.boolean().optional(),
+  contest: z.object({ graceOverSeconds: z.number(), graceUnderSeconds: z.number() }).optional(),
+})
+const club = z.object({
+  id: z.string(),
+  name: z.string(),
+  number: z.string().optional(),
+  district: z.string().optional(),
+  defaultRules: rules,
+  profiles: z.record(z.string(), definition).optional(),
+})
 const member = z.object({ id: z.string(), name: z.string(), aliases: z.array(z.string()) })
 const guest = z.object({ id: z.string(), name: z.string(), addedAt: z.number() })
 const template = z.object({ id: z.string(), clubId: z.string().optional(), name: z.string(), segments: z.array(segment) })
@@ -65,7 +99,6 @@ const settings = z.object({
   silent: z.boolean().default(false),
   signalPatterns: z.boolean(),
   theme: z.enum(["system", "light", "dark"]),
-  profileOverrides: z.record(z.string(), profile),
   currentMeetingId: z.string().optional(),
   currentClubId: z.string().optional(),
 })

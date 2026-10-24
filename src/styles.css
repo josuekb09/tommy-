@@ -1753,3 +1753,27 @@ html[data-theme="dark"] .ts-screen :focus-visible {
     min-height: 48px;
   }
 }
+/* Settings: profile library (phase 3) */
+.profile-group h3,
+.profile-add h3 {
+  margin: 16px 0 6px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.profile-add {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+.range-preview,
+.range-error {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.range-error {
+  color: var(--red);
+}
+html[data-theme="dark"] .range-error {
+  color: #ff8a95;
+}

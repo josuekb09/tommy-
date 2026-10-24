@@ -1,9 +1,9 @@
 import type { AgendaItem, AppSettings, Club, Guest, Meeting, Member, Segment, SegmentKind, TimedRecord, TimingAction } from "../domain"
 import { appendAction } from "../engine/timing"
-import { defaultRules } from "../engine/profiles"
+import { defaultRules, definitionOf, resolveProfile, rulesOf } from "../engine/profiles"
 import type { TommyDB } from "./db"
 
-export const defaultSettings: AppSettings = { sound: false, vibration: true, silent: false, signalPatterns: true, theme: "system", profileOverrides: {} }
+export const defaultSettings: AppSettings = { sound: false, vibration: true, silent: false, signalPatterns: true, theme: "system" }
 
 export const segmentOrder: SegmentKind[] = ["opening", "prepared_speeches", "table_topics", "evaluations", "reports", "other"]
 
@@ -26,6 +26,9 @@ export function blankMeeting(now: number, ids: Ids = randomId, clubId?: string):
     updatedAt: now,
   }
 }
+
+/** Fills in rules added after the club was saved. */
+export const normalizeClub = (club: Club | undefined): Club | undefined => club && { ...club, defaultRules: rulesOf(club), profiles: club.profiles ?? {} }
 
 export class RecordedTimeError extends Error {
   constructor() {
@@ -54,14 +57,14 @@ export function createRepository(db: TommyDB, options: { now?: () => number; ids
   }
 
   const clubs = {
-    get: (id: string) => db.clubs.get(id),
+    get: async (id: string) => normalizeClub(await db.clubs.get(id)),
     put: (club: Club) => db.clubs.put(club),
     /** The club for this device, created on first use. */
     async current(): Promise<Club> {
       const { currentClubId } = await settings.get()
-      const existing = currentClubId ? await db.clubs.get(currentClubId) : await db.clubs.toCollection().first()
+      const existing = normalizeClub(currentClubId ? await db.clubs.get(currentClubId) : await db.clubs.toCollection().first())
       if (existing) return existing
-      const club: Club = { id: ids(), name: "My club", defaultRules: defaultRules }
+      const club: Club = { id: ids(), name: "My club", defaultRules, profiles: {} }
       await db.clubs.put(club)
       await settings.update({ currentClubId: club.id })
       return club
@@ -124,6 +127,28 @@ export function createRepository(db: TommyDB, options: { now?: () => number; ids
           segments: meeting.segments.map(segment => ({ ...segment, items: renumber(segment.items.filter(item => item.id !== itemId)) })),
         }))
         await db.timedRecords.delete(itemId)
+      })
+    },
+    /**
+     * Re-resolves the timing of everyone in the meeting who has not been timed
+     * yet, after the club changed its rules or profiles. Anyone with a record
+     * keeps the profile they were timed with, so no recorded result changes.
+     */
+    async applyClubRules(meetingId: string, club: Club) {
+      const rules = rulesOf(club)
+      await db.transaction("rw", db.meetings, db.timedRecords, async () => {
+        const timed = new Set((await db.timedRecords.where("meetingId").equals(meetingId).toArray()).filter(r => r.status !== "idle").map(r => r.agendaItemId))
+        await meetings.update(meetingId, meeting => ({
+          ...meeting,
+          segments: meeting.segments.map(segment => ({
+            ...segment,
+            items: segment.items.map(item =>
+              timed.has(item.id)
+                ? item
+                : { ...item, timing: resolveProfile(definitionOf(item.timing, item.profileId, club.profiles), rules, item.role === "TableTopicsSpeaker") },
+            ),
+          })),
+        }))
       })
     },
     async remove(id: string) {

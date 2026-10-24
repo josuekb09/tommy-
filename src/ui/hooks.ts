@@ -1,7 +1,8 @@
 import { useEffect, useState, useSyncExternalStore } from "react"
 import { useLiveQuery } from "dexie-react-hooks"
 import type { TimingAction } from "../domain"
-import { defaultRules } from "../engine/profiles"
+import { rulesOf } from "../engine/profiles"
+import { normalizeClub } from "../storage/repository"
 import { elapsedAt, stateOf } from "../engine/timing"
 import { clock, db, repo } from "./runtime"
 
@@ -53,9 +54,9 @@ export function useAppData() {
     const settings = await repo.settings.get()
     const meeting = settings.currentMeetingId ? await db.meetings.get(settings.currentMeetingId) : undefined
     const records = meeting ? await db.timedRecords.where("meetingId").equals(meeting.id).toArray() : []
-    const club = settings.currentClubId ? await db.clubs.get(settings.currentClubId) : undefined
+    const club = normalizeClub(settings.currentClubId ? await db.clubs.get(settings.currentClubId) : undefined)
     const guests = await db.guests.toArray()
-    return { settings, meeting, records, rules: club?.defaultRules ?? defaultRules, club, guests }
+    return { settings, meeting, records, rules: rulesOf(club), clubProfiles: club?.profiles ?? {}, club, guests }
   })
 }
 export type AppData = NonNullable<ReturnType<typeof useAppData>>

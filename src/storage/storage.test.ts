@@ -79,6 +79,31 @@ describe("repository", () => {
   })
 })
 
+describe("club rules", () => {
+  it("re-applies changed rules to people not yet timed and never to recorded ones", async () => {
+    const { meeting, item: timed } = await meetingWithSpeaker()
+    const waiting = await repo.meetings.addItem(meeting.id, "prepared_speeches", { role: "Speaker", personName: "Ben", profileId: "speech", timing: speech })
+    await repo.records.append(meeting.id, timed.id, { type: "start", at: 0 })
+    await repo.records.append(meeting.id, timed.id, { type: "stop", at: 280_000 })
+
+    const club = await repo.clubs.current()
+    const strict = { ...club, defaultRules: { ...club.defaultRules, graceEnabled: false, contestMode: true } }
+    await repo.clubs.put(strict)
+    await repo.meetings.applyClubRules(meeting.id, strict)
+
+    const items = (await repo.meetings.get(meeting.id))!.segments.flatMap(segment => segment.items)
+    expect(items.find(item => item.id === timed.id)!.timing).toEqual(speech)
+    expect(items.find(item => item.id === waiting.id)!.timing).toMatchObject({ green: 300, red: 420, graceSeconds: 0, disqualifyEnabled: true })
+  })
+
+  it("fills in rules missing from a club saved by an older version", async () => {
+    const club = await repo.clubs.current()
+    const { graceEnabled: _removed, ...older } = club.defaultRules
+    await db.clubs.put({ ...club, defaultRules: older as typeof club.defaultRules })
+    expect((await repo.clubs.current()).defaultRules.graceEnabled).toBe(true)
+  })
+})
+
 describe("export and import", () => {
   async function populated() {
     const { meeting, item } = await meetingWithSpeaker()
@@ -202,11 +227,13 @@ describe("legacy v1 migration", () => {
       role: "Speaker",
       pathwaysProject: "Ice Breaker",
       speechTitle: "My story",
+      profileId: "ice_breaker",
       timing: { green: 240, amber: 300, red: 360, graceSeconds: 20 },
     })
     expect(meetings[0].status).toBe("live")
     expect(club.name).toBe("Riverside Toastmasters")
-    expect(settings).toMatchObject({ signalPatterns: false, currentMeetingId: "old-meeting", profileOverrides: { speech: { green: 30, amber: 60, red: 90 } } })
+    expect(club.profiles?.speech).toMatchObject({ name: "Prepared speech", green: 30, amber: 60, red: 90 })
+    expect(settings).toMatchObject({ signalPatterns: false, currentMeetingId: "old-meeting" })
   })
 
   it("migrates from a real v1 database once and leaves it untouched", async () => {

@@ -1,12 +1,23 @@
-/** Thresholds are whole seconds of elapsed speaking time. */
+/**
+ * Thresholds are whole seconds of elapsed speaking time. The optional fields
+ * default to the behaviour of a classic green/amber/red card set.
+ */
 export type TimingProfile = {
   green: number
   amber: number
   red: number
-  /** Seconds either side of the green–red window that still count as qualified. */
+  /** Seconds after red (and, unless graceUnderSeconds says otherwise, before green) that still qualify. */
   graceSeconds: number
   /** Contest rule: outside the grace window the speaker is disqualified for time. */
   disqualifyEnabled: boolean
+  /** Grace below the minimum, when it differs from graceSeconds (Table Topics contests: 0). */
+  graceUnderSeconds?: number
+  /** Only a red signal (e.g. role reports "up to 2:00"); there is no minimum time. */
+  redOnly?: boolean
+  /** Red shows on reaching the red time (default) or only once it is exceeded. */
+  redAt?: "reach" | "exceed"
+  /** After red + grace: show overtime (default) or stay on red. */
+  overtime?: "afterGrace" | "never"
 }
 
 export type Signal = "none" | "green" | "amber" | "red" | "overtime" | "disqualified"

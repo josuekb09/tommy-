@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { CalendarPlus, ChevronRight, Plus, X } from "lucide-react"
 import type { AgendaRole, Meeting, SegmentKind } from "../../domain"
-import { builtInProfiles, defaultProfileIdForRole, formatClock, profileFor, roleLabels, segmentLabels, type ProfileId } from "../../engine/profiles"
+import { defaultProfileIdForRole, formatClock, profileFor, profileLibrary, rangeLabel, roleLabels, segmentLabels } from "../../engine/profiles"
 import { stateOf } from "../../engine/timing"
 import { RecordedTimeError } from "../../storage/repository"
 import { Sheet } from "../components"
@@ -107,7 +107,7 @@ export function MeetingScreen({
                       <b>{item.personName}</b>
                       <small>
                         {roleLabels[item.role]}
-                        {item.speechTitle ? ` · ${item.speechTitle}` : ""} · {formatClock(item.timing.green * 1000)}–{formatClock(item.timing.red * 1000)}
+                        {item.speechTitle ? ` · ${item.speechTitle}` : ""} · {rangeLabel(item.timing)}
                       </small>
                     </button>
                     <span className={`row-status ${state.status}`}>
@@ -159,14 +159,16 @@ function AddItemSheet({
   const [role, setRole] = useState<AgendaRole>(roles[0])
   const [name, setName] = useState("")
   const [title, setTitle] = useState("")
-  const [profileId, setProfileId] = useState<ProfileId>(defaultProfileIdForRole(roles[0]))
+  const [profileId, setProfileId] = useState(defaultProfileIdForRole(roles[0]))
+  const library = profileLibrary(data.clubProfiles)
   const save = async () => {
     if (!name.trim()) return
     await repo.meetings.addItem(data.meeting.id, kind, {
       role,
       personName: name.trim(),
       ...(title.trim() && { speechTitle: title.trim() }),
-      timing: profileFor(role, data.rules, data.settings.profileOverrides, profileId),
+      profileId,
+      timing: profileFor(role, data.rules, data.clubProfiles, profileId),
     })
     added(name.trim())
   }
@@ -206,15 +208,12 @@ function AddItemSheet({
       )}
       <label className="field-label">
         Timing
-        <select value={profileId} onChange={event => setProfileId(event.target.value as ProfileId)}>
-          {(Object.keys(builtInProfiles) as ProfileId[]).map(id => {
-            const times = data.settings.profileOverrides[id] ?? builtInProfiles[id]
-            return (
-              <option key={id} value={id}>
-                {builtInProfiles[id].name} ({formatClock(times.green * 1000)}–{formatClock(times.red * 1000)})
-              </option>
-            )
-          })}
+        <select value={profileId} onChange={event => setProfileId(event.target.value)}>
+          {library.map(profile => (
+            <option key={profile.id} value={profile.id}>
+              {profile.name} ({rangeLabel(profileFor(role, data.rules, data.clubProfiles, profile.id))})
+            </option>
+          ))}
         </select>
       </label>
       <button className="primary-button sheet-submit" onClick={() => void save()} disabled={!name.trim()}>

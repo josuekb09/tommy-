@@ -29,7 +29,8 @@ src/domain/    types only (Club, Member, Guest, Meeting, Segment, AgendaItem, Ti
 src/engine/    pure logic: no React, no DOM, no storage. The clock is always injected.
   timing/      action-log replay (record.ts), signals and results (signal.ts), wall clock (clock.ts),
                portable timer with events (timer.ts), shared vector runner (vectors.test.ts)
-  profiles.ts  built-in timing profiles, role and segment labels, m:ss helpers
+  profiles.ts  timing profile library, club-rule resolution (resolveProfile), labels, m:ss helpers
+  range.ts     profileFromRange: agenda time text → profile, or null with a reason
   report.ts    Timer's report rows
   audio.ts     threshold tone (the only browser-API module in engine/; it stays outside the timing core)
 src/storage/   db.ts (Dexie schema), repository.ts (the only code that touches IndexedDB),
@@ -53,6 +54,11 @@ docs/          AUDIT.md, TIMING_SPEC.md (normative timing rules for app and firm
 - **Timing behaviour is defined by [docs/TIMING_SPEC.md](docs/TIMING_SPEC.md) and `test-vectors/timing.json`.**
   - Any change to timing rules needs a new or updated vector in the same commit.
   - Never edit an expectation just to make code pass.
+- **Club rules and the profile library live on the `Club`.**
+  - `resolveProfile` turns a library entry plus the rules into the item's `TimingProfile`.
+  - Rule changes are re-applied only to items not yet timed (`repo.meetings.applyClubRules`).
+  - Recorded results keep the rules they were timed with.
+- **`profileFromRange` never guesses.** Anything ambiguous returns `{ profile: null, reason }`.
 
 ## Commands
 

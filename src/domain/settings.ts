@@ -1,5 +1,4 @@
 import type { Segment } from "./meeting"
-import type { TimingProfile } from "./timing"
 
 export type Theme = "system" | "light" | "dark"
 
@@ -12,8 +11,6 @@ export type AppSettings = {
   /** Show the pattern/icon cue next to every signal. */
   signalPatterns: boolean
   theme: Theme
-  /** Club overrides of the built-in profiles, keyed by profile id. */
-  profileOverrides: Record<string, TimingProfile>
   currentMeetingId?: string
   currentClubId?: string
 }

@@ -1,7 +1,7 @@
 import Dexie from "dexie"
-import type { AgendaItem, AgendaRole, AppSettings, Club, Meeting, SegmentKind, TimedRecord, TimingAction, TimingProfile } from "../domain"
+import type { AgendaItem, AgendaRole, AppSettings, Club, Meeting, ProfileDefinition, SegmentKind, TimedRecord, TimingAction, TimingProfile } from "../domain"
 import { buildRecord } from "../engine/timing"
-import { defaultRules, type ProfileTimes } from "../engine/profiles"
+import { builtInProfiles, defaultRules } from "../engine/profiles"
 import type { TommyDB } from "./db"
 import { defaultSettings, segmentOrder, type Ids } from "./repository"
 
@@ -43,7 +43,7 @@ const segmentKinds: Record<LegacyMeeting["segments"][number]["type"], SegmentKin
 }
 const roles: Record<string, AgendaRole> = { Speech: "Speaker", "Ice Breaker": "Speaker", Evaluation: "Evaluator", "Table Topics": "TableTopicsSpeaker" }
 const profileIds: Record<string, string> = { Speech: "speech", "Ice Breaker": "ice_breaker", Evaluation: "evaluation", "Table Topics": "table_topics" }
-const times = (t: LegacyThresholds): ProfileTimes => ({ green: t.green, amber: t.yellow, red: t.red })
+const times = (t: LegacyThresholds) => ({ green: t.green, amber: t.yellow, red: t.red })
 
 /**
  * Rebuilds each v1 turn as an action log that reproduces its exact elapsed
@@ -74,10 +74,19 @@ export function legacyActions(turn: LegacyTurn, at: number): TimingAction[] {
 export function convertLegacy(legacy: { meetings: LegacyMeeting[]; settings?: LegacySettings }, at: number, ids: Ids) {
   const old = legacy.settings ?? {}
   const current = legacy.meetings.find(meeting => meeting.id === old.currentMeetingId) ?? legacy.meetings[0]
+  // v1 preset edits become the club's edits of the matching built-in profiles.
+  const profiles: Record<string, ProfileDefinition> = Object.fromEntries(
+    Object.entries(old.presetOverrides ?? {}).flatMap(([name, t]) => {
+      const builtIn = builtInProfiles.find(profile => profile.id === profileIds[name])
+      return builtIn ? [[builtIn.id, { ...builtIn, ...times(t) }]] : []
+    }),
+  )
   const club: Club = {
     id: ids(),
     name: current?.title?.trim() || "My club",
+    // v1 applied its allowances to Table Topics too; keep that behaviour for migrated clubs.
     defaultRules: { ...defaultRules, graceSeconds: old.withinLate ?? defaultRules.graceSeconds, graceAppliesToTableTopics: true },
+    profiles,
   }
   const rules = club.defaultRules
   const records: TimedRecord[] = []
@@ -98,6 +107,7 @@ export function convertLegacy(legacy: { meetings: LegacyMeeting[]; settings?: Le
           personName: turn.name,
           ...(turn.role === "Ice Breaker" && { pathwaysProject: "Ice Breaker" }),
           ...(speechTitle && { speechTitle }),
+          ...(profileIds[turn.role] && { profileId: profileIds[turn.role] }),
           timing,
         }
       })
@@ -114,11 +124,6 @@ export function convertLegacy(legacy: { meetings: LegacyMeeting[]; settings?: Le
     vibration: old.vibration ?? defaultSettings.vibration,
     signalPatterns: old.colourBlind ?? defaultSettings.signalPatterns,
     theme: old.theme ?? (old.dark ? "dark" : "system"),
-    profileOverrides: Object.fromEntries(
-      Object.entries(old.presetOverrides ?? {})
-        .filter(([name]) => profileIds[name])
-        .map(([name, t]) => [profileIds[name], { ...times(t), graceSeconds: rules.graceSeconds, disqualifyEnabled: false }]),
-    ),
     currentMeetingId: current?.id,
     currentClubId: club.id,
   }

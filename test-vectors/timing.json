@@ -2,27 +2,132 @@
   "format": "tommy-timing-vectors",
   "version": 1,
   "profiles": {
-    "speech": { "green": 300, "amber": 360, "red": 420, "graceSeconds": 30, "disqualifyEnabled": false },
-    "speechContest": { "green": 300, "amber": 360, "red": 420, "graceSeconds": 30, "disqualifyEnabled": true },
-    "tableTopics": { "green": 60, "amber": 90, "red": 120, "graceSeconds": 0, "disqualifyEnabled": false }
+    "speech": {
+      "green": 300,
+      "amber": 360,
+      "red": 420,
+      "graceSeconds": 30,
+      "disqualifyEnabled": false
+    },
+    "speechContest": {
+      "green": 300,
+      "amber": 360,
+      "red": 420,
+      "graceSeconds": 30,
+      "disqualifyEnabled": true
+    },
+    "tableTopics": {
+      "green": 60,
+      "amber": 90,
+      "red": 120,
+      "graceSeconds": 0,
+      "disqualifyEnabled": false
+    },
+    "roleReport": {
+      "green": 120,
+      "amber": 120,
+      "red": 120,
+      "graceSeconds": 30,
+      "disqualifyEnabled": false,
+      "redOnly": true
+    },
+    "speechRedOnExceed": {
+      "green": 300,
+      "amber": 360,
+      "red": 420,
+      "graceSeconds": 30,
+      "disqualifyEnabled": false,
+      "redAt": "exceed"
+    },
+    "speechNoOvertime": {
+      "green": 300,
+      "amber": 360,
+      "red": 420,
+      "graceSeconds": 30,
+      "disqualifyEnabled": false,
+      "overtime": "never"
+    },
+    "tableTopicsContest": {
+      "green": 60,
+      "amber": 90,
+      "red": 120,
+      "graceSeconds": 30,
+      "graceUnderSeconds": 0,
+      "disqualifyEnabled": true
+    }
   },
   "scenarios": [
     {
       "name": "thresholds-exact-boundaries",
       "description": "Each signal starts exactly at its threshold. Overtime starts 1 ms after red + grace.",
       "profile": "speech",
-      "actions": [{ "type": "start", "at": 0 }],
+      "actions": [
+        {
+          "type": "start",
+          "at": 0
+        }
+      ],
       "expect": [
-        { "at": 0, "status": "running", "elapsedMs": 0, "signal": "none" },
-        { "at": 299900, "status": "running", "elapsedMs": 299900, "signal": "none" },
-        { "at": 299999, "status": "running", "elapsedMs": 299999, "signal": "none" },
-        { "at": 300000, "status": "running", "elapsedMs": 300000, "signal": "green" },
-        { "at": 359999, "status": "running", "elapsedMs": 359999, "signal": "green" },
-        { "at": 360000, "status": "running", "elapsedMs": 360000, "signal": "amber" },
-        { "at": 419999, "status": "running", "elapsedMs": 419999, "signal": "amber" },
-        { "at": 420000, "status": "running", "elapsedMs": 420000, "signal": "red" },
-        { "at": 450000, "status": "running", "elapsedMs": 450000, "signal": "red" },
-        { "at": 450001, "status": "running", "elapsedMs": 450001, "signal": "overtime" }
+        {
+          "at": 0,
+          "status": "running",
+          "elapsedMs": 0,
+          "signal": "none"
+        },
+        {
+          "at": 299900,
+          "status": "running",
+          "elapsedMs": 299900,
+          "signal": "none"
+        },
+        {
+          "at": 299999,
+          "status": "running",
+          "elapsedMs": 299999,
+          "signal": "none"
+        },
+        {
+          "at": 300000,
+          "status": "running",
+          "elapsedMs": 300000,
+          "signal": "green"
+        },
+        {
+          "at": 359999,
+          "status": "running",
+          "elapsedMs": 359999,
+          "signal": "green"
+        },
+        {
+          "at": 360000,
+          "status": "running",
+          "elapsedMs": 360000,
+          "signal": "amber"
+        },
+        {
+          "at": 419999,
+          "status": "running",
+          "elapsedMs": 419999,
+          "signal": "amber"
+        },
+        {
+          "at": 420000,
+          "status": "running",
+          "elapsedMs": 420000,
+          "signal": "red"
+        },
+        {
+          "at": 450000,
+          "status": "running",
+          "elapsedMs": 450000,
+          "signal": "red"
+        },
+        {
+          "at": 450001,
+          "status": "running",
+          "elapsedMs": 450001,
+          "signal": "overtime"
+        }
       ]
     },
     {
@@ -30,75 +135,207 @@
       "description": "Events emitted when the host evaluates the timer at each action and checkpoint.",
       "profile": "speech",
       "actions": [
-        { "type": "start", "at": 0 },
-        { "type": "stop", "at": 365000 }
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "stop",
+          "at": 365000
+        }
       ],
       "expect": [
-        { "at": 299999, "status": "running", "elapsedMs": 299999, "signal": "none" },
-        { "at": 300000, "status": "running", "elapsedMs": 300000, "signal": "green" },
-        { "at": 360000, "status": "running", "elapsedMs": 360000, "signal": "amber" },
-        { "at": 400000, "status": "stopped", "elapsedMs": 365000, "signal": "amber", "result": "within" }
+        {
+          "at": 299999,
+          "status": "running",
+          "elapsedMs": 299999,
+          "signal": "none"
+        },
+        {
+          "at": 300000,
+          "status": "running",
+          "elapsedMs": 300000,
+          "signal": "green"
+        },
+        {
+          "at": 360000,
+          "status": "running",
+          "elapsedMs": 360000,
+          "signal": "amber"
+        },
+        {
+          "at": 400000,
+          "status": "stopped",
+          "elapsedMs": 365000,
+          "signal": "amber",
+          "result": "within"
+        }
       ],
       "events": [
-        { "type": "started", "at": 0, "elapsedMs": 0 },
-        { "type": "signalChanged", "at": 300000, "elapsedMs": 300000, "from": "none", "to": "green" },
-        { "type": "signalChanged", "at": 360000, "elapsedMs": 360000, "from": "green", "to": "amber" },
-        { "type": "stopped", "at": 365000, "elapsedMs": 365000 }
+        {
+          "type": "started",
+          "at": 0,
+          "elapsedMs": 0
+        },
+        {
+          "type": "signalChanged",
+          "at": 300000,
+          "elapsedMs": 300000,
+          "from": "none",
+          "to": "green"
+        },
+        {
+          "type": "signalChanged",
+          "at": 360000,
+          "elapsedMs": 360000,
+          "from": "green",
+          "to": "amber"
+        },
+        {
+          "type": "stopped",
+          "at": 365000,
+          "elapsedMs": 365000
+        }
       ]
     },
     {
       "name": "contest-disqualified-after-grace",
       "profile": "speechContest",
-      "actions": [{ "type": "start", "at": 0 }],
+      "actions": [
+        {
+          "type": "start",
+          "at": 0
+        }
+      ],
       "expect": [
-        { "at": 450000, "status": "running", "elapsedMs": 450000, "signal": "red" },
-        { "at": 450001, "status": "running", "elapsedMs": 450001, "signal": "disqualified" }
+        {
+          "at": 450000,
+          "status": "running",
+          "elapsedMs": 450000,
+          "signal": "red"
+        },
+        {
+          "at": 450001,
+          "status": "running",
+          "elapsedMs": 450001,
+          "signal": "disqualified"
+        }
       ]
     },
     {
       "name": "contest-stop-on-window-edge-qualifies",
       "profile": "speechContest",
       "actions": [
-        { "type": "start", "at": 0 },
-        { "type": "stop", "at": 450000 }
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "stop",
+          "at": 450000
+        }
       ],
-      "expect": [{ "at": 500000, "status": "stopped", "elapsedMs": 450000, "signal": "red", "result": "within" }]
+      "expect": [
+        {
+          "at": 500000,
+          "status": "stopped",
+          "elapsedMs": 450000,
+          "signal": "red",
+          "result": "within"
+        }
+      ]
     },
     {
       "name": "contest-stop-1ms-past-window-disqualifies",
       "profile": "speechContest",
       "actions": [
-        { "type": "start", "at": 0 },
-        { "type": "stop", "at": 450001 }
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "stop",
+          "at": 450001
+        }
       ],
-      "expect": [{ "at": 500000, "status": "stopped", "elapsedMs": 450001, "signal": "disqualified", "result": "disqualified" }]
+      "expect": [
+        {
+          "at": 500000,
+          "status": "stopped",
+          "elapsedMs": 450001,
+          "signal": "disqualified",
+          "result": "disqualified"
+        }
+      ]
     },
     {
       "name": "contest-under-minimum-disqualifies",
       "profile": "speechContest",
       "actions": [
-        { "type": "start", "at": 0 },
-        { "type": "stop", "at": 269999 }
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "stop",
+          "at": 269999
+        }
       ],
-      "expect": [{ "at": 300000, "status": "stopped", "elapsedMs": 269999, "signal": "none", "result": "disqualified" }]
+      "expect": [
+        {
+          "at": 300000,
+          "status": "stopped",
+          "elapsedMs": 269999,
+          "signal": "none",
+          "result": "disqualified"
+        }
+      ]
     },
     {
       "name": "under-minimum-with-grace",
       "profile": "speech",
       "actions": [
-        { "type": "start", "at": 0 },
-        { "type": "stop", "at": 269999 }
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "stop",
+          "at": 269999
+        }
       ],
-      "expect": [{ "at": 300000, "status": "stopped", "elapsedMs": 269999, "signal": "none", "result": "under" }]
+      "expect": [
+        {
+          "at": 300000,
+          "status": "stopped",
+          "elapsedMs": 269999,
+          "signal": "none",
+          "result": "under"
+        }
+      ]
     },
     {
       "name": "minimum-edge-with-grace-is-within",
       "profile": "speech",
       "actions": [
-        { "type": "start", "at": 0 },
-        { "type": "stop", "at": 270000 }
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "stop",
+          "at": 270000
+        }
       ],
-      "expect": [{ "at": 300000, "status": "stopped", "elapsedMs": 270000, "signal": "none", "result": "within" }]
+      "expect": [
+        {
+          "at": 300000,
+          "status": "stopped",
+          "elapsedMs": 270000,
+          "signal": "none",
+          "result": "within"
+        }
+      ]
     },
     {
       "name": "strict-rule-under-and-over",
@@ -106,131 +343,362 @@
       "profile": "speech",
       "withinRule": "strict",
       "actions": [
-        { "type": "start", "at": 0 },
-        { "type": "stop", "at": 420001 }
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "stop",
+          "at": 420001
+        }
       ],
-      "expect": [{ "at": 500000, "status": "stopped", "elapsedMs": 420001, "signal": "red", "result": "over" }]
+      "expect": [
+        {
+          "at": 500000,
+          "status": "stopped",
+          "elapsedMs": 420001,
+          "signal": "red",
+          "result": "over"
+        }
+      ]
     },
     {
       "name": "strict-rule-under",
       "profile": "speech",
       "withinRule": "strict",
       "actions": [
-        { "type": "start", "at": 0 },
-        { "type": "stop", "at": 299999 }
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "stop",
+          "at": 299999
+        }
       ],
-      "expect": [{ "at": 300000, "status": "stopped", "elapsedMs": 299999, "signal": "none", "result": "under" }]
+      "expect": [
+        {
+          "at": 300000,
+          "status": "stopped",
+          "elapsedMs": 299999,
+          "signal": "none",
+          "result": "under"
+        }
+      ]
     },
     {
       "name": "table-topics-without-grace",
       "profile": "tableTopics",
-      "actions": [{ "type": "start", "at": 0 }],
+      "actions": [
+        {
+          "type": "start",
+          "at": 0
+        }
+      ],
       "expect": [
-        { "at": 59999, "status": "running", "elapsedMs": 59999, "signal": "none" },
-        { "at": 60000, "status": "running", "elapsedMs": 60000, "signal": "green" },
-        { "at": 90000, "status": "running", "elapsedMs": 90000, "signal": "amber" },
-        { "at": 120000, "status": "running", "elapsedMs": 120000, "signal": "red" },
-        { "at": 120001, "status": "running", "elapsedMs": 120001, "signal": "overtime" }
+        {
+          "at": 59999,
+          "status": "running",
+          "elapsedMs": 59999,
+          "signal": "none"
+        },
+        {
+          "at": 60000,
+          "status": "running",
+          "elapsedMs": 60000,
+          "signal": "green"
+        },
+        {
+          "at": 90000,
+          "status": "running",
+          "elapsedMs": 90000,
+          "signal": "amber"
+        },
+        {
+          "at": 120000,
+          "status": "running",
+          "elapsedMs": 120000,
+          "signal": "red"
+        },
+        {
+          "at": 120001,
+          "status": "running",
+          "elapsedMs": 120001,
+          "signal": "overtime"
+        }
       ]
     },
     {
       "name": "pause-and-resume",
       "profile": "speech",
       "actions": [
-        { "type": "start", "at": 1000 },
-        { "type": "pause", "at": 61000 },
-        { "type": "resume", "at": 100000 },
-        { "type": "stop", "at": 160000 }
+        {
+          "type": "start",
+          "at": 1000
+        },
+        {
+          "type": "pause",
+          "at": 61000
+        },
+        {
+          "type": "resume",
+          "at": 100000
+        },
+        {
+          "type": "stop",
+          "at": 160000
+        }
       ],
       "expect": [
-        { "at": 80000, "status": "paused", "elapsedMs": 60000, "signal": "none" },
-        { "at": 130000, "status": "running", "elapsedMs": 90000, "signal": "none" },
-        { "at": 200000, "status": "stopped", "elapsedMs": 120000, "signal": "none", "result": "under" }
+        {
+          "at": 80000,
+          "status": "paused",
+          "elapsedMs": 60000,
+          "signal": "none"
+        },
+        {
+          "at": 130000,
+          "status": "running",
+          "elapsedMs": 90000,
+          "signal": "none"
+        },
+        {
+          "at": 200000,
+          "status": "stopped",
+          "elapsedMs": 120000,
+          "signal": "none",
+          "result": "under"
+        }
       ]
     },
     {
       "name": "stop-while-paused",
       "profile": "speech",
       "actions": [
-        { "type": "start", "at": 0 },
-        { "type": "pause", "at": 5000 },
-        { "type": "stop", "at": 9000 }
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "pause",
+          "at": 5000
+        },
+        {
+          "type": "stop",
+          "at": 9000
+        }
       ],
-      "expect": [{ "at": 10000, "status": "stopped", "elapsedMs": 5000, "signal": "none" }]
+      "expect": [
+        {
+          "at": 10000,
+          "status": "stopped",
+          "elapsedMs": 5000,
+          "signal": "none"
+        }
+      ]
     },
     {
       "name": "double-tap-on-start-is-ignored",
       "profile": "speech",
       "actions": [
-        { "type": "start", "at": 0 },
-        { "type": "start", "at": 150 }
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "start",
+          "at": 150
+        }
       ],
       "ignored": [1],
-      "expect": [{ "at": 5000, "status": "running", "elapsedMs": 5000, "signal": "none" }]
+      "expect": [
+        {
+          "at": 5000,
+          "status": "running",
+          "elapsedMs": 5000,
+          "signal": "none"
+        }
+      ]
     },
     {
       "name": "undo-after-double-tap-returns-to-idle",
       "description": "The ignored second Start is not in the log, so one Undo cancels the real Start.",
       "profile": "speech",
       "actions": [
-        { "type": "start", "at": 0 },
-        { "type": "start", "at": 150 },
-        { "type": "undo", "at": 2000 }
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "start",
+          "at": 150
+        },
+        {
+          "type": "undo",
+          "at": 2000
+        }
       ],
       "ignored": [1],
-      "expect": [{ "at": 3000, "status": "idle", "elapsedMs": 0, "signal": "none" }]
+      "expect": [
+        {
+          "at": 3000,
+          "status": "idle",
+          "elapsedMs": 0,
+          "signal": "none"
+        }
+      ]
     },
     {
       "name": "stop-before-start-is-ignored",
       "profile": "speech",
       "actions": [
-        { "type": "stop", "at": 0 },
-        { "type": "start", "at": 1000 }
+        {
+          "type": "stop",
+          "at": 0
+        },
+        {
+          "type": "start",
+          "at": 1000
+        }
       ],
       "ignored": [0],
-      "expect": [{ "at": 2000, "status": "running", "elapsedMs": 1000, "signal": "none" }]
+      "expect": [
+        {
+          "at": 2000,
+          "status": "running",
+          "elapsedMs": 1000,
+          "signal": "none"
+        }
+      ]
     },
     {
       "name": "offset-jumps-past-a-threshold",
       "profile": "speech",
       "actions": [
-        { "type": "start", "at": 0 },
-        { "type": "offset", "at": 290000, "ms": 10000 }
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "offset",
+          "at": 290000,
+          "ms": 10000
+        }
       ],
       "expect": [
-        { "at": 289999, "status": "running", "elapsedMs": 289999, "signal": "none" },
-        { "at": 290000, "status": "running", "elapsedMs": 300000, "signal": "green", "offsetsMs": [10000] },
-        { "at": 295000, "status": "running", "elapsedMs": 305000, "signal": "green" }
+        {
+          "at": 289999,
+          "status": "running",
+          "elapsedMs": 289999,
+          "signal": "none"
+        },
+        {
+          "at": 290000,
+          "status": "running",
+          "elapsedMs": 300000,
+          "signal": "green",
+          "offsetsMs": [10000]
+        },
+        {
+          "at": 295000,
+          "status": "running",
+          "elapsedMs": 305000,
+          "signal": "green"
+        }
       ],
       "events": [
-        { "type": "started", "at": 0, "elapsedMs": 0 },
-        { "type": "offsetApplied", "at": 290000, "elapsedMs": 300000, "ms": 10000 },
-        { "type": "signalChanged", "at": 290000, "elapsedMs": 300000, "from": "none", "to": "green" }
+        {
+          "type": "started",
+          "at": 0,
+          "elapsedMs": 0
+        },
+        {
+          "type": "offsetApplied",
+          "at": 290000,
+          "elapsedMs": 300000,
+          "ms": 10000
+        },
+        {
+          "type": "signalChanged",
+          "at": 290000,
+          "elapsedMs": 300000,
+          "from": "none",
+          "to": "green"
+        }
       ]
     },
     {
       "name": "all-catch-up-offsets",
       "profile": "speech",
       "actions": [
-        { "type": "start", "at": 0 },
-        { "type": "offset", "at": 1000, "ms": 5000 },
-        { "type": "offset", "at": 2000, "ms": 10000 },
-        { "type": "offset", "at": 3000, "ms": 30000 },
-        { "type": "offset", "at": 4000, "ms": -5000 }
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "offset",
+          "at": 1000,
+          "ms": 5000
+        },
+        {
+          "type": "offset",
+          "at": 2000,
+          "ms": 10000
+        },
+        {
+          "type": "offset",
+          "at": 3000,
+          "ms": 30000
+        },
+        {
+          "type": "offset",
+          "at": 4000,
+          "ms": -5000
+        }
       ],
-      "expect": [{ "at": 10000, "status": "running", "elapsedMs": 50000, "signal": "none", "offsetsMs": [5000, 10000, 30000, -5000] }]
+      "expect": [
+        {
+          "at": 10000,
+          "status": "running",
+          "elapsedMs": 50000,
+          "signal": "none",
+          "offsetsMs": [5000, 10000, 30000, -5000]
+        }
+      ]
     },
     {
       "name": "negative-offset-drops-back-a-signal",
       "profile": "speech",
       "actions": [
-        { "type": "start", "at": 0 },
-        { "type": "offset", "at": 301000, "ms": -5000 }
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "offset",
+          "at": 301000,
+          "ms": -5000
+        }
       ],
       "expect": [
-        { "at": 300500, "status": "running", "elapsedMs": 300500, "signal": "green" },
-        { "at": 301000, "status": "running", "elapsedMs": 296000, "signal": "none" },
-        { "at": 305000, "status": "running", "elapsedMs": 300000, "signal": "green" }
+        {
+          "at": 300500,
+          "status": "running",
+          "elapsedMs": 300500,
+          "signal": "green"
+        },
+        {
+          "at": 301000,
+          "status": "running",
+          "elapsedMs": 296000,
+          "signal": "none"
+        },
+        {
+          "at": 305000,
+          "status": "running",
+          "elapsedMs": 300000,
+          "signal": "green"
+        }
       ]
     },
     {
@@ -238,119 +706,309 @@
       "description": "Subtracting 5 s at 2 s applies only -2 s; the timer then continues from zero.",
       "profile": "speech",
       "actions": [
-        { "type": "start", "at": 0 },
-        { "type": "offset", "at": 2000, "ms": -5000 }
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "offset",
+          "at": 2000,
+          "ms": -5000
+        }
       ],
       "expect": [
-        { "at": 2000, "status": "running", "elapsedMs": 0, "signal": "none", "offsetsMs": [-2000] },
-        { "at": 6000, "status": "running", "elapsedMs": 4000, "signal": "none" }
+        {
+          "at": 2000,
+          "status": "running",
+          "elapsedMs": 0,
+          "signal": "none",
+          "offsetsMs": [-2000]
+        },
+        {
+          "at": 6000,
+          "status": "running",
+          "elapsedMs": 4000,
+          "signal": "none"
+        }
       ]
     },
     {
       "name": "offset-at-zero-is-ignored",
       "profile": "speech",
       "actions": [
-        { "type": "start", "at": 0 },
-        { "type": "offset", "at": 0, "ms": -5000 }
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "offset",
+          "at": 0,
+          "ms": -5000
+        }
       ],
       "ignored": [1],
-      "expect": [{ "at": 1000, "status": "running", "elapsedMs": 1000, "signal": "none", "offsetsMs": [] }]
+      "expect": [
+        {
+          "at": 1000,
+          "status": "running",
+          "elapsedMs": 1000,
+          "signal": "none",
+          "offsetsMs": []
+        }
+      ]
     },
     {
       "name": "offset-before-start-is-ignored",
       "profile": "speech",
-      "actions": [{ "type": "offset", "at": 0, "ms": 5000 }],
+      "actions": [
+        {
+          "type": "offset",
+          "at": 0,
+          "ms": 5000
+        }
+      ],
       "ignored": [0],
-      "expect": [{ "at": 1000, "status": "idle", "elapsedMs": 0, "signal": "none" }]
+      "expect": [
+        {
+          "at": 1000,
+          "status": "idle",
+          "elapsedMs": 0,
+          "signal": "none"
+        }
+      ]
     },
     {
       "name": "offset-after-stop",
       "profile": "speech",
       "actions": [
-        { "type": "start", "at": 0 },
-        { "type": "stop", "at": 400000 },
-        { "type": "offset", "at": 401000, "ms": 5000 }
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "stop",
+          "at": 400000
+        },
+        {
+          "type": "offset",
+          "at": 401000,
+          "ms": 5000
+        }
       ],
-      "expect": [{ "at": 500000, "status": "stopped", "elapsedMs": 405000, "signal": "amber", "offsetsMs": [5000] }]
+      "expect": [
+        {
+          "at": 500000,
+          "status": "stopped",
+          "elapsedMs": 405000,
+          "signal": "amber",
+          "offsetsMs": [5000]
+        }
+      ]
     },
     {
       "name": "undo-after-accidental-stop-keeps-running",
       "description": "Undo removes the Stop as if it never happened: time keeps counting from the original start.",
       "profile": "speech",
       "actions": [
-        { "type": "start", "at": 0 },
-        { "type": "stop", "at": 10000 },
-        { "type": "undo", "at": 12000 }
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "stop",
+          "at": 10000
+        },
+        {
+          "type": "undo",
+          "at": 12000
+        }
       ],
       "expect": [
-        { "at": 11000, "status": "stopped", "elapsedMs": 10000, "signal": "none" },
-        { "at": 20000, "status": "running", "elapsedMs": 20000, "signal": "none" }
+        {
+          "at": 11000,
+          "status": "stopped",
+          "elapsedMs": 10000,
+          "signal": "none"
+        },
+        {
+          "at": 20000,
+          "status": "running",
+          "elapsedMs": 20000,
+          "signal": "none"
+        }
       ]
     },
     {
       "name": "undo-after-accidental-reset-restores-the-time",
       "profile": "speech",
       "actions": [
-        { "type": "start", "at": 0 },
-        { "type": "stop", "at": 300000 },
-        { "type": "reset", "at": 301000 },
-        { "type": "undo", "at": 302000 }
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "stop",
+          "at": 300000
+        },
+        {
+          "type": "reset",
+          "at": 301000
+        },
+        {
+          "type": "undo",
+          "at": 302000
+        }
       ],
       "expect": [
-        { "at": 301500, "status": "idle", "elapsedMs": 0, "signal": "none" },
-        { "at": 400000, "status": "stopped", "elapsedMs": 300000, "signal": "green" }
+        {
+          "at": 301500,
+          "status": "idle",
+          "elapsedMs": 0,
+          "signal": "none"
+        },
+        {
+          "at": 400000,
+          "status": "stopped",
+          "elapsedMs": 300000,
+          "signal": "green"
+        }
       ]
     },
     {
       "name": "undo-after-accidental-start",
       "profile": "speech",
       "actions": [
-        { "type": "start", "at": 0 },
-        { "type": "undo", "at": 1000 }
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "undo",
+          "at": 1000
+        }
       ],
-      "expect": [{ "at": 5000, "status": "idle", "elapsedMs": 0, "signal": "none" }]
+      "expect": [
+        {
+          "at": 5000,
+          "status": "idle",
+          "elapsedMs": 0,
+          "signal": "none"
+        }
+      ]
     },
     {
       "name": "two-undos-step-back-twice",
       "profile": "speech",
       "actions": [
-        { "type": "start", "at": 0 },
-        { "type": "pause", "at": 10000 },
-        { "type": "resume", "at": 20000 },
-        { "type": "undo", "at": 25000 },
-        { "type": "undo", "at": 26000 }
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "pause",
+          "at": 10000
+        },
+        {
+          "type": "resume",
+          "at": 20000
+        },
+        {
+          "type": "undo",
+          "at": 25000
+        },
+        {
+          "type": "undo",
+          "at": 26000
+        }
       ],
       "expect": [
-        { "at": 25500, "status": "paused", "elapsedMs": 10000, "signal": "none" },
-        { "at": 30000, "status": "running", "elapsedMs": 30000, "signal": "none" }
+        {
+          "at": 25500,
+          "status": "paused",
+          "elapsedMs": 10000,
+          "signal": "none"
+        },
+        {
+          "at": 30000,
+          "status": "running",
+          "elapsedMs": 30000,
+          "signal": "none"
+        }
       ]
     },
     {
       "name": "undo-with-nothing-to-undo-is-ignored",
       "profile": "speech",
-      "actions": [{ "type": "undo", "at": 0 }],
+      "actions": [
+        {
+          "type": "undo",
+          "at": 0
+        }
+      ],
       "ignored": [0],
-      "expect": [{ "at": 1000, "status": "idle", "elapsedMs": 0, "signal": "none" }]
+      "expect": [
+        {
+          "at": 1000,
+          "status": "idle",
+          "elapsedMs": 0,
+          "signal": "none"
+        }
+      ]
     },
     {
       "name": "reset-then-start-again",
       "profile": "speech",
       "actions": [
-        { "type": "start", "at": 0 },
-        { "type": "offset", "at": 1000, "ms": 30000 },
-        { "type": "stop", "at": 5000 },
-        { "type": "reset", "at": 6000 },
-        { "type": "start", "at": 10000 }
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "offset",
+          "at": 1000,
+          "ms": 30000
+        },
+        {
+          "type": "stop",
+          "at": 5000
+        },
+        {
+          "type": "reset",
+          "at": 6000
+        },
+        {
+          "type": "start",
+          "at": 10000
+        }
       ],
-      "expect": [{ "at": 12000, "status": "running", "elapsedMs": 2000, "signal": "none", "offsetsMs": [] }]
+      "expect": [
+        {
+          "at": 12000,
+          "status": "running",
+          "elapsedMs": 2000,
+          "signal": "none",
+          "offsetsMs": []
+        }
+      ]
     },
     {
       "name": "edit-keeps-the-original-value",
       "profile": "speech",
       "actions": [
-        { "type": "start", "at": 0 },
-        { "type": "stop", "at": 400000 },
-        { "type": "edit", "at": 401000, "ms": 410000, "reason": "Timer started late" }
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "stop",
+          "at": 400000
+        },
+        {
+          "type": "edit",
+          "at": 401000,
+          "ms": 410000,
+          "reason": "Timer started late"
+        }
       ],
       "expect": [
         {
@@ -358,87 +1016,429 @@
           "status": "stopped",
           "elapsedMs": 410000,
           "signal": "amber",
-          "edits": [{ "at": 401000, "fromMs": 400000, "toMs": 410000, "reason": "Timer started late" }]
+          "edits": [
+            {
+              "at": 401000,
+              "fromMs": 400000,
+              "toMs": 410000,
+              "reason": "Timer started late"
+            }
+          ]
         }
       ],
       "events": [
-        { "type": "started", "at": 0, "elapsedMs": 0 },
-        { "type": "signalChanged", "at": 400000, "elapsedMs": 400000, "from": "none", "to": "amber" },
-        { "type": "stopped", "at": 400000, "elapsedMs": 400000 },
-        { "type": "edited", "at": 401000, "elapsedMs": 410000, "fromMs": 400000, "reason": "Timer started late" }
+        {
+          "type": "started",
+          "at": 0,
+          "elapsedMs": 0
+        },
+        {
+          "type": "signalChanged",
+          "at": 400000,
+          "elapsedMs": 400000,
+          "from": "none",
+          "to": "amber"
+        },
+        {
+          "type": "stopped",
+          "at": 400000,
+          "elapsedMs": 400000
+        },
+        {
+          "type": "edited",
+          "at": 401000,
+          "elapsedMs": 410000,
+          "fromMs": 400000,
+          "reason": "Timer started late"
+        }
       ]
     },
     {
       "name": "edit-without-reason-is-ignored",
       "profile": "speech",
       "actions": [
-        { "type": "start", "at": 0 },
-        { "type": "stop", "at": 400000 },
-        { "type": "edit", "at": 401000, "ms": 410000, "reason": "   " }
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "stop",
+          "at": 400000
+        },
+        {
+          "type": "edit",
+          "at": 401000,
+          "ms": 410000,
+          "reason": "   "
+        }
       ],
       "ignored": [2],
-      "expect": [{ "at": 500000, "status": "stopped", "elapsedMs": 400000, "signal": "amber", "edits": [] }]
+      "expect": [
+        {
+          "at": 500000,
+          "status": "stopped",
+          "elapsedMs": 400000,
+          "signal": "amber",
+          "edits": []
+        }
+      ]
     },
     {
       "name": "edit-while-running-is-ignored",
       "profile": "speech",
       "actions": [
-        { "type": "start", "at": 0 },
-        { "type": "edit", "at": 1000, "ms": 5000, "reason": "x" }
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "edit",
+          "at": 1000,
+          "ms": 5000,
+          "reason": "x"
+        }
       ],
       "ignored": [1],
-      "expect": [{ "at": 2000, "status": "running", "elapsedMs": 2000, "signal": "none" }]
+      "expect": [
+        {
+          "at": 2000,
+          "status": "running",
+          "elapsedMs": 2000,
+          "signal": "none"
+        }
+      ]
     },
     {
       "name": "undo-an-edit",
       "profile": "speech",
       "actions": [
-        { "type": "start", "at": 0 },
-        { "type": "stop", "at": 400000 },
-        { "type": "edit", "at": 401000, "ms": 410000, "reason": "Typo" },
-        { "type": "undo", "at": 402000 }
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "stop",
+          "at": 400000
+        },
+        {
+          "type": "edit",
+          "at": 401000,
+          "ms": 410000,
+          "reason": "Typo"
+        },
+        {
+          "type": "undo",
+          "at": 402000
+        }
       ],
-      "expect": [{ "at": 500000, "status": "stopped", "elapsedMs": 400000, "signal": "amber", "edits": [] }]
+      "expect": [
+        {
+          "at": 500000,
+          "status": "stopped",
+          "elapsedMs": 400000,
+          "signal": "amber",
+          "edits": []
+        }
+      ]
     },
     {
       "name": "offset-after-an-edit-adjusts-the-edited-value",
       "profile": "speech",
       "actions": [
-        { "type": "start", "at": 0 },
-        { "type": "stop", "at": 400000 },
-        { "type": "edit", "at": 401000, "ms": 410000, "reason": "Late start" },
-        { "type": "offset", "at": 402000, "ms": -5000 }
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "stop",
+          "at": 400000
+        },
+        {
+          "type": "edit",
+          "at": 401000,
+          "ms": 410000,
+          "reason": "Late start"
+        },
+        {
+          "type": "offset",
+          "at": 402000,
+          "ms": -5000
+        }
       ],
-      "expect": [{ "at": 500000, "status": "stopped", "elapsedMs": 405000, "signal": "amber", "offsetsMs": [-5000] }]
+      "expect": [
+        {
+          "at": 500000,
+          "status": "stopped",
+          "elapsedMs": 405000,
+          "signal": "amber",
+          "offsetsMs": [-5000]
+        }
+      ]
     },
     {
       "name": "refresh-while-running",
       "description": "A host that restarts and replays the stored actions must show the same time. Nothing is special-cased: the log is the state.",
       "profile": "speech",
-      "actions": [{ "type": "start", "at": 1792864801698 }],
+      "actions": [
+        {
+          "type": "start",
+          "at": 1792864801698
+        }
+      ],
       "expect": [
-        { "at": 1792864924698, "status": "running", "elapsedMs": 123000, "signal": "none" },
-        { "at": 1792865101698, "status": "running", "elapsedMs": 300000, "signal": "green" }
+        {
+          "at": 1792864924698,
+          "status": "running",
+          "elapsedMs": 123000,
+          "signal": "none"
+        },
+        {
+          "at": 1792865101698,
+          "status": "running",
+          "elapsedMs": 300000,
+          "signal": "green"
+        }
       ]
     },
     {
       "name": "very-long-overtime",
       "description": "Three hours, then a full day, past the limit without overflow or wrap-around.",
       "profile": "speech",
-      "actions": [{ "type": "start", "at": 0 }],
+      "actions": [
+        {
+          "type": "start",
+          "at": 0
+        }
+      ],
       "expect": [
-        { "at": 10800000, "status": "running", "elapsedMs": 10800000, "signal": "overtime" },
-        { "at": 86400000, "status": "running", "elapsedMs": 86400000, "signal": "overtime" }
+        {
+          "at": 10800000,
+          "status": "running",
+          "elapsedMs": 10800000,
+          "signal": "overtime"
+        },
+        {
+          "at": 86400000,
+          "status": "running",
+          "elapsedMs": 86400000,
+          "signal": "overtime"
+        }
       ]
     },
     {
       "name": "very-long-overtime-in-a-contest",
       "profile": "speechContest",
       "actions": [
-        { "type": "start", "at": 0 },
-        { "type": "stop", "at": 10800000 }
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "stop",
+          "at": 10800000
+        }
       ],
-      "expect": [{ "at": 10800001, "status": "stopped", "elapsedMs": 10800000, "signal": "disqualified", "result": "disqualified" }]
+      "expect": [
+        {
+          "at": 10800001,
+          "status": "stopped",
+          "elapsedMs": 10800000,
+          "signal": "disqualified",
+          "result": "disqualified"
+        }
+      ]
+    },
+    {
+      "name": "red-only-role-report",
+      "description": "A red-only limit shows nothing until red and has no minimum time.",
+      "profile": "roleReport",
+      "actions": [
+        {
+          "type": "start",
+          "at": 0
+        }
+      ],
+      "expect": [
+        {
+          "at": 0,
+          "status": "running",
+          "elapsedMs": 0,
+          "signal": "none"
+        },
+        {
+          "at": 119999,
+          "status": "running",
+          "elapsedMs": 119999,
+          "signal": "none"
+        },
+        {
+          "at": 120000,
+          "status": "running",
+          "elapsedMs": 120000,
+          "signal": "red"
+        },
+        {
+          "at": 150000,
+          "status": "running",
+          "elapsedMs": 150000,
+          "signal": "red"
+        },
+        {
+          "at": 150001,
+          "status": "running",
+          "elapsedMs": 150001,
+          "signal": "overtime"
+        }
+      ]
+    },
+    {
+      "name": "red-only-short-report-is-within",
+      "profile": "roleReport",
+      "actions": [
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "stop",
+          "at": 5000
+        }
+      ],
+      "expect": [
+        {
+          "at": 6000,
+          "status": "stopped",
+          "elapsedMs": 5000,
+          "signal": "none",
+          "result": "within"
+        }
+      ]
+    },
+    {
+      "name": "red-on-exceeding-the-maximum",
+      "description": "With redAt exceed, red appears 1 ms after the maximum.",
+      "profile": "speechRedOnExceed",
+      "actions": [
+        {
+          "type": "start",
+          "at": 0
+        }
+      ],
+      "expect": [
+        {
+          "at": 420000,
+          "status": "running",
+          "elapsedMs": 420000,
+          "signal": "amber"
+        },
+        {
+          "at": 420001,
+          "status": "running",
+          "elapsedMs": 420001,
+          "signal": "red"
+        },
+        {
+          "at": 450001,
+          "status": "running",
+          "elapsedMs": 450001,
+          "signal": "overtime"
+        }
+      ]
+    },
+    {
+      "name": "stay-on-red-instead-of-overtime",
+      "profile": "speechNoOvertime",
+      "actions": [
+        {
+          "type": "start",
+          "at": 0
+        }
+      ],
+      "expect": [
+        {
+          "at": 450001,
+          "status": "running",
+          "elapsedMs": 450001,
+          "signal": "red"
+        },
+        {
+          "at": 3600000,
+          "status": "running",
+          "elapsedMs": 3600000,
+          "signal": "red"
+        }
+      ]
+    },
+    {
+      "name": "table-topics-contest-window-1-00-to-2-30",
+      "description": "No grace under the minimum, 30 s over the maximum.",
+      "profile": "tableTopicsContest",
+      "actions": [
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "stop",
+          "at": 59999
+        }
+      ],
+      "expect": [
+        {
+          "at": 70000,
+          "status": "stopped",
+          "elapsedMs": 59999,
+          "signal": "none",
+          "result": "disqualified"
+        }
+      ]
+    },
+    {
+      "name": "table-topics-contest-on-the-window-edges",
+      "profile": "tableTopicsContest",
+      "actions": [
+        {
+          "type": "start",
+          "at": 0
+        }
+      ],
+      "expect": [
+        {
+          "at": 150000,
+          "status": "running",
+          "elapsedMs": 150000,
+          "signal": "red"
+        },
+        {
+          "at": 150001,
+          "status": "running",
+          "elapsedMs": 150001,
+          "signal": "disqualified"
+        }
+      ]
+    },
+    {
+      "name": "table-topics-contest-minimum-edge-qualifies",
+      "profile": "tableTopicsContest",
+      "actions": [
+        {
+          "type": "start",
+          "at": 0
+        },
+        {
+          "type": "stop",
+          "at": 60000
+        }
+      ],
+      "expect": [
+        {
+          "at": 70000,
+          "status": "stopped",
+          "elapsedMs": 60000,
+          "signal": "green",
+          "result": "within"
+        }
+      ]
     }
   ]
 }
