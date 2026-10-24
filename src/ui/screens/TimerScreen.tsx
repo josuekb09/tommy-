@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { Bell, BellOff, Check, ChevronRight, Download, MonitorUp, Pause, PencilLine, Play, RotateCcw, Square, Undo2, UserPlus, Video } from "lucide-react"
-import type { AgendaItem, Meeting, Segment, SegmentKind, Signal, TimedRecord, TimeResult } from "../../domain"
+import type { AgendaItem, Meeting, SegmentKind, Signal, TimedRecord, TimeResult } from "../../domain"
+import { evaluatingLabel, nextGuestName, nextInOrder, personLabel, sortedItems } from "../../engine/agenda"
 import { activityLabel, formatClock, parseClock, profileFor, rangeLabel, segmentLabels } from "../../engine/profiles"
 import { signalRank, stateOf, type ActionInput, type Timer, type TimerState } from "../../engine/timing"
 import { resultLabels } from "../../engine/report"
@@ -8,12 +9,12 @@ import { playThresholdTone, unlockAudio } from "../../engine/audio"
 import { Sheet, Toggle } from "../components"
 import { canCast, castSpeakerView, downloadBackgrounds, openSpeakerWindow, openZoomWindow } from "../present"
 import { useSecondTicks, useWakeLock, type AppData } from "../hooks"
+import { peopleOf, PersonField, savePerson, type PersonChoice } from "../people"
 import { repo } from "../runtime"
 import { SignalIcon, signalAnnouncement, signalPresentation } from "../signals"
 import { timerFor } from "../timers"
 
 const timedKinds: SegmentKind[] = ["prepared_speeches", "table_topics", "evaluations"]
-const sortedItems = (segment: Segment) => [...segment.items].sort((a, b) => a.order - b.order)
 const timerStateOf = (record?: TimedRecord): TimerState => stateOf(record?.actions ?? [])
 const rangeText = (item: AgendaItem) => `${activityLabel(item.role)} ${rangeLabel(item.timing)}`
 
@@ -41,8 +42,9 @@ export function TimerScreen({ data, readOnly, selectedId, select, notify, openMe
   const items = sortedItems(segment)
   const item =
     items.find(i => i.id === selectedId) ?? items.find(i => ["running", "paused"].includes(statusOf(i))) ?? items.find(i => statusOf(i) !== "stopped")
-  const upNext = items.filter(i => i.id !== item?.id && statusOf(i) === "idle")
-  const next = upNext[0]
+  // "Next" follows the meeting order across segments, as arranged on the Meeting screen.
+  const next = nextInOrder(meeting, item?.id, i => statusOf(i) === "idle")
+  const nextSegment = next && meeting.segments.find(s => s.items.some(i => i.id === next.id))
 
   const record = item && recordFor.get(item.id)
   const timer = item && timerFor(item, rules.withinRule, record?.actions)
@@ -64,7 +66,11 @@ export function TimerScreen({ data, readOnly, selectedId, select, notify, openMe
     if (selectedId !== item.id) select(item.id)
     await dispatchAndSave(meeting.id, item.id, timer, input)
   }
-  const goNext = () => next && select(next.id)
+  const goNext = () => {
+    if (!next) return
+    setSegmentId(undefined)
+    select(next.id)
+  }
   /** Start, then Stop, then move on: the one button the Timer's thumb rests on. */
   const primary = () => {
     if (status === "idle") {
@@ -77,7 +83,7 @@ export function TimerScreen({ data, readOnly, selectedId, select, notify, openMe
     goNext()
   }
   const reset = () => {
-    if (status === "stopped" && !confirm(`Reset ${item?.personName}'s recorded time? You can undo this.`)) return
+    if (status === "stopped" && !confirm(`Reset ${item && personLabel(item)}'s recorded time? You can undo this.`)) return
     void act({ type: "reset" }).then(() => notify("Timer reset. Undo is available."))
   }
   const offset = (seconds: number) => void act({ type: "offset", ms: seconds * 1000 })
@@ -116,16 +122,21 @@ export function TimerScreen({ data, readOnly, selectedId, select, notify, openMe
       </div>
 
       <header className="ts-person">
-        <h1 id="timer-person">{item?.personName || `No one in ${segmentLabels[segment.kind]}`}</h1>
+        <h1 id="timer-person">{item ? personLabel(item) : `No one in ${segmentLabels[segment.kind]}`}</h1>
         {item ? (
-          <p className="ts-range">{rangeText(item)}</p>
+          <p className="ts-range">
+            {item.guest && <span className="person-chip guest">Guest</span>}
+            {rangeText(item)}
+            {evaluatingLabel(meeting, item) && <span className="ts-evaluating">{evaluatingLabel(meeting, item)}</span>}
+          </p>
         ) : (
           <button className="text-button ts-open-agenda" onClick={openMeeting}>
             Add people on the Meeting screen
           </button>
         )}
         <p className="ts-next">
-          Next: <b>{next?.personName ?? "no one"}</b>
+          Next: <b>{next ? personLabel(next) : "no one"}</b>
+          {nextSegment && nextSegment.id !== segment.id && <> · {segmentLabels[nextSegment.kind]}</>}
         </p>
       </header>
 
@@ -304,15 +315,14 @@ function useKeyboardShortcuts(enabled: boolean, handlers: Record<string, () => u
 }
 
 function GuestSheet({ data, close, added }: { data: AppData & { meeting: Meeting }; close: () => void; added: (id: string, started: boolean) => void }) {
-  const tableTopics = data.meeting.segments.find(segment => segment.kind === "table_topics")
-  const placeholder = `Guest ${(tableTopics?.items.length ?? 0) + 1}`
-  const [name, setName] = useState("")
+  const placeholder = nextGuestName(data.meeting)
+  const people = useMemo(() => peopleOf(data.members, data.guests), [data.members, data.guests])
+  const [person, setPerson] = useState<PersonChoice>({ name: "", guest: true })
   const add = async (start: boolean) => {
-    const personName = name.trim() || placeholder
-    if (name.trim()) await repo.guests.add(personName)
+    const saved = person.name.trim() ? await savePerson(person) : { personName: placeholder, guest: true as const }
     const item = await repo.meetings.addItem(data.meeting.id, "table_topics", {
       role: "TableTopicsSpeaker",
-      personName,
+      ...saved,
       profileId: "table_topics",
       timing: profileFor("TableTopicsSpeaker", data.rules, data.clubProfiles),
     })
@@ -321,15 +331,7 @@ function GuestSheet({ data, close, added }: { data: AppData & { meeting: Meeting
   }
   return (
     <Sheet title="Add a guest" eyebrow="Table Topics" onClose={close}>
-      <label className="field-label">
-        Name
-        <input value={name} onChange={event => setName(event.target.value)} placeholder={placeholder} list="guest-names" />
-      </label>
-      <datalist id="guest-names">
-        {data.guests.map(guest => (
-          <option key={guest.id} value={guest.name} />
-        ))}
-      </datalist>
+      <PersonField value={person} onChange={setPerson} people={people} placeholder={placeholder} />
       <div className="sheet-actions">
         <button className="secondary-button sheet-submit" onClick={() => void add(false)}>
           <UserPlus aria-hidden="true" />

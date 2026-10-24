@@ -6,6 +6,7 @@ import { profileFromRange } from "../../engine/range"
 import { exportAll, exportMeeting, ImportError, importExport, parseExport } from "../../storage/export-import"
 import { download, Toggle } from "../components"
 import type { AppData } from "../hooks"
+import { MembersCard } from "../people"
 import { db, repo } from "../runtime"
 
 const fileDate = () => new Date().toISOString().slice(0, 10)
@@ -68,6 +69,8 @@ export function SettingsScreen({ data, readOnly, notify }: Props) {
           <input value={club?.name ?? ""} onChange={event => club && void repo.clubs.put({ ...club, name: event.target.value })} disabled={readOnly} />
         </label>
       </section>
+
+      <MembersCard members={data.members} readOnly={readOnly} notify={notify} />
 
       <section className="settings-card" aria-labelledby="rules-heading">
         <h2 id="rules-heading">Club timing rules</h2>

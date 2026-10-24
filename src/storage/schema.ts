@@ -24,6 +24,7 @@ const item = z.object({
   role: z.enum(agendaRoles),
   personId: z.string().optional(),
   personName: z.string(),
+  guest: z.boolean().optional(),
   speechTitle: z.string().optional(),
   pathwaysProject: z.string().optional(),
   evaluatesItemId: z.string().optional(),

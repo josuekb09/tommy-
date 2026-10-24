@@ -1,18 +1,9 @@
 import { expect, test, type Page } from "@playwright/test"
 import AxeBuilder from "@axe-core/playwright"
+import { nav, openWithFakeClock } from "./helpers"
 
 const at = (minutes: number, seconds = 0) => `${minutes}:${String(seconds).padStart(2, "0")}`
-const nav = (page: Page, name: "Meeting" | "Timer" | "Report" | "Settings") =>
-  page.getByRole("navigation", { name: "Primary navigation" }).getByRole("button", { name, exact: true }).click()
 const expectClock = (page: Page, minutes: number, seconds = 0) => expect(page.locator(".ts-clock")).toHaveText(at(minutes, seconds))
-
-/** Installs a fake clock, lets the app start (IndexedDB needs timers), then freezes time for the test. */
-async function openWithFakeClock(page: Page) {
-  await page.clock.install({ time: new Date("2026-10-24T18:00:00Z") })
-  await page.goto("/")
-  await expect(page.getByRole("navigation", { name: "Primary navigation" })).toBeVisible()
-  await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1_000)
-}
 
 async function addToAgenda(page: Page, segment: "Prepared speeches" | "Evaluations" | "Table Topics", name: string) {
   await nav(page, "Meeting")
@@ -157,7 +148,9 @@ test("removing someone with a recorded time asks for confirmation", async ({ pag
   await openWithFakeClock(page)
   await timeItemAfterAdding(page)
   page.once("dialog", dialog => dialog.dismiss())
+  await page.getByRole("button", { name: "Edit Keep Me" }).click()
   await page.getByRole("button", { name: "Remove Keep Me" }).click()
+  await page.keyboard.press("Escape")
   await expect(page.getByRole("button", { name: /^Keep Me/ })).toBeVisible()
 })
 async function timeItemAfterAdding(page: Page) {

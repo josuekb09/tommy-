@@ -113,6 +113,40 @@ describe("Timer screen", () => {
     expect(await screen.findByRole("heading", { name: "Ben Okafor" })).toBeTruthy()
   })
 
+  it("Next follows the meeting order across segments, and shows who an evaluator is evaluating", async () => {
+    const meeting = await repo.meetings.current()
+    const ada = await repo.meetings.addItem(meeting.id, "prepared_speeches", {
+      role: "Speaker",
+      personName: "Ada Lovelace",
+      timing: profileFor("Speaker", defaultRules),
+    })
+    await repo.meetings.addItem(meeting.id, "evaluations", {
+      role: "Evaluator",
+      personName: "Eva Evans",
+      evaluatesItemId: ada.id,
+      timing: profileFor("Evaluator", defaultRules),
+    })
+    // Evaluations run before Table Topics at this club.
+    await repo.meetings.moveSegment(meeting.id, meeting.segments.find(s => s.kind === "evaluations")!.id, -1)
+    await repo.meetings.addItem(meeting.id, "table_topics", {
+      role: "TableTopicsSpeaker",
+      personName: "Gia",
+      guest: true,
+      timing: profileFor("TableTopicsSpeaker", defaultRules),
+    })
+    render(<Harness />)
+    await screen.findByRole("heading", { name: "Ada Lovelace" })
+    expect(document.querySelector(".ts-next")?.textContent).toBe("Next: Eva Evans · Evaluations")
+
+    await user.click(screen.getByRole("button", { name: "Start" }))
+    await user.click(await screen.findByRole("button", { name: "Stop" }))
+    await user.click(await screen.findByRole("button", { name: "Next speaker" }))
+    expect(await screen.findByRole("heading", { name: "Eva Evans" })).toBeTruthy()
+    expect(screen.getByText("Evaluating: Ada Lovelace")).toBeTruthy()
+    expect(screen.getByRole("tab", { name: "Evaluations" }).getAttribute("aria-selected")).toBe("true")
+    expect(document.querySelector(".ts-next")?.textContent).toBe("Next: Gia · Table Topics")
+  })
+
   it("supports keyboard shortcuts: Space, 1/2/3, U and N", async () => {
     await setup()
     await user.keyboard(" ")

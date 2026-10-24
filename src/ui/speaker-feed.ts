@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react"
 import type { AgendaItem, Meeting, TimedRecord } from "../domain"
 import type { ExplainCard } from "../engine/explain"
+import { personLabel } from "../engine/agenda"
 import { activityLabel, rangeLabel } from "../engine/profiles"
 import { createSignalPublisher, type SignalOutput, type SignalSnapshot } from "../engine/signal-output"
 import { elapsedAt, signalAt, stateOf } from "../engine/timing"
@@ -46,7 +47,7 @@ export function speakerSnapshot(
       activity: activityLabel(item.role),
       range: rangeLabel(item.timing),
       profile: item.timing,
-      ...(!contest && { person: item.personName }),
+      ...(!contest && { person: personLabel(item) }),
     },
     clock: { elapsedMs, at: now, running: state.status === "running", visible },
     clockKey: `${item.id}:${actions.length}`,

@@ -60,6 +60,7 @@ export function ReportScreen({ data, notify }: { data: AppData & { meeting: Meet
               <div className="report-line" key={row.itemId}>
                 <span>
                   <b>{row.name}</b>
+                  {row.guest && <span className="person-chip guest">Guest</span>}
                   {row.edit && <small>Edited: {row.edit.reason}</small>}
                 </span>
                 <span className="time-edit">{row.time}</span>

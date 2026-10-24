@@ -7,6 +7,8 @@ export const agendaRoles = [
   "GeneralEvaluator",
   "TableTopicsMaster",
   "Speaker",
+  /** The evaluator's short brief before the speech: same person, separate timed slot. */
+  "EvaluatorBrief",
   "Evaluator",
   "TableTopicsSpeaker",
   "TableTopicsEvaluator",
@@ -26,9 +28,11 @@ export type AgendaItem = {
   /** Member id when the person is on the club roster. */
   personId?: string
   personName: string
+  /** A visitor rather than a club member. */
+  guest?: boolean
   speechTitle?: string
   pathwaysProject?: string
-  /** For evaluators: the agenda item of the speech being evaluated. */
+  /** For evaluators and their briefs: the agenda item of the speech being evaluated. */
   evaluatesItemId?: string
   /** The library profile this item's timing came from, if any. */
   profileId?: string

@@ -62,6 +62,8 @@ export const defaultProfileIdForRole = (role: AgendaRole): string => {
       return "speech"
     case "Evaluator":
       return "evaluation"
+    case "EvaluatorBrief":
+      return "evaluator_brief"
     case "TableTopicsSpeaker":
       return "table_topics"
     case "TableTopicsEvaluator":
@@ -155,6 +157,7 @@ export const rangeLabel = (profile: Pick<TimingProfile, "green" | "red" | "redOn
 export const segmentForRole = (role: AgendaRole): SegmentKind => {
   switch (role) {
     case "Speaker":
+    case "EvaluatorBrief":
       return "prepared_speeches"
     case "Evaluator":
     case "GeneralEvaluator":
@@ -190,6 +193,7 @@ export const roleLabels: Record<AgendaRole, string> = {
   GeneralEvaluator: "General Evaluator",
   TableTopicsMaster: "Table Topics Master",
   Speaker: "Speaker",
+  EvaluatorBrief: "Evaluator brief",
   Evaluator: "Evaluator",
   TableTopicsSpeaker: "Table Topics speaker",
   TableTopicsEvaluator: "Table Topics evaluator",

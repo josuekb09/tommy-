@@ -56,7 +56,9 @@ export function useAppData() {
     const records = meeting ? await db.timedRecords.where("meetingId").equals(meeting.id).toArray() : []
     const club = normalizeClub(settings.currentClubId ? await db.clubs.get(settings.currentClubId) : undefined)
     const guests = await db.guests.toArray()
-    return { settings, meeting, records, rules: rulesOf(club), clubProfiles: club?.profiles ?? {}, club, guests }
+    const members = await db.members.orderBy("name").toArray()
+    const templates = await db.templates.toArray()
+    return { settings, meeting, records, rules: rulesOf(club), clubProfiles: club?.profiles ?? {}, club, guests, members, templates }
   })
 }
 export type AppData = NonNullable<ReturnType<typeof useAppData>>

@@ -1,11 +1,13 @@
-import type { AgendaItem, AppSettings, Club, Guest, Meeting, Member, Segment, SegmentKind, TimedRecord, TimingAction } from "../domain"
+import type { AgendaItem, AppSettings, Club, Guest, Meeting, Member, Segment, SegmentKind, TimedRecord, TimingAction, Template } from "../domain"
 import { appendAction } from "../engine/timing"
+import { insertItem, moveItem, moveSegment } from "../engine/agenda"
 import { defaultRules, definitionOf, resolveProfile, rulesOf } from "../engine/profiles"
+import { segmentKinds, segmentsFromTemplate, templateFromMeeting } from "../engine/templates"
 import type { TommyDB } from "./db"
 
 export const defaultSettings: AppSettings = { sound: false, vibration: true, silent: false, speakerClock: false, signalPatterns: true, theme: "system" }
 
-export const segmentOrder: SegmentKind[] = ["opening", "prepared_speeches", "table_topics", "evaluations", "reports", "other"]
+export const segmentOrder: SegmentKind[] = segmentKinds
 
 export type Ids = () => string
 const randomId: Ids = () => crypto.randomUUID()
@@ -80,6 +82,13 @@ export function createRepository(db: TommyDB, options: { now?: () => number; ids
       await settings.update({ currentMeetingId: meeting.id })
       return meeting
     },
+    /** A new current meeting with the template's order, roles and pairings, timed with the club's current rules. */
+    async createFromTemplate(template: Template, club?: Club): Promise<Meeting> {
+      const meeting = { ...blankMeeting(now(), ids, club?.id), segments: segmentsFromTemplate(template, ids, rulesOf(club), club?.profiles) }
+      await db.meetings.put(meeting)
+      await settings.update({ currentMeetingId: meeting.id })
+      return meeting
+    },
     /** The meeting this device is working on, created on first use. */
     async current(): Promise<Meeting> {
       const { currentMeetingId } = await settings.get()
@@ -101,16 +110,18 @@ export function createRepository(db: TommyDB, options: { now?: () => number; ids
         return next
       })
     },
-    async addItem(meetingId: string, kind: SegmentKind, item: Omit<AgendaItem, "id" | "order">): Promise<AgendaItem> {
+    /** Adds an item at the end of its segment, or just before another item of that segment. */
+    async addItem(meetingId: string, kind: SegmentKind, item: Omit<AgendaItem, "id" | "order">, options: { before?: string } = {}): Promise<AgendaItem> {
       const created: AgendaItem = { ...item, id: ids(), order: 0 }
-      await meetings.update(meetingId, meeting => ({
-        ...meeting,
-        segments: withSegment(meeting.segments, kind, ids).map(segment =>
-          segment.kind === kind ? { ...segment, items: renumber([...segment.items, created]) } : segment,
-        ),
-      }))
+      await meetings.update(meetingId, meeting => {
+        const segments = withSegment(meeting.segments, kind, ids)
+        return insertItem({ ...meeting, segments }, segments.find(segment => segment.kind === kind)!.id, created, options.before)
+      })
       return { ...created, order: (await findItem(meetingId, created.id))?.order ?? 0 }
     },
+    /** Moves an item within its segment. Recorded times are untouched. */
+    moveItem: (meetingId: string, itemId: string, toIndex: number) => meetings.update(meetingId, meeting => moveItem(meeting, itemId, toIndex)),
+    moveSegment: (meetingId: string, segmentId: string, delta: -1 | 1) => meetings.update(meetingId, meeting => moveSegment(meeting, segmentId, delta)),
     async updateItem(meetingId: string, itemId: string, patch: Partial<Omit<AgendaItem, "id">>) {
       await meetings.update(meetingId, meeting => ({
         ...meeting,
@@ -190,7 +201,26 @@ export function createRepository(db: TommyDB, options: { now?: () => number; ids
   const members = {
     list: () => db.members.orderBy("name").toArray(),
     put: (member: Member) => db.members.put(member),
+    /** Always a new member: similar names are only ever suggested, never merged. */
+    async add(name: string): Promise<Member> {
+      const member: Member = { id: ids(), name: name.trim(), aliases: [] }
+      await db.members.put(member)
+      return member
+    },
     remove: (id: string) => db.members.delete(id),
+  }
+
+  const templates = {
+    list: () => db.templates.toArray(),
+    /** Saves the meeting's order, roles, timings and pairings, without any names. */
+    async saveMeeting(meetingId: string, name: string): Promise<Template> {
+      const meeting = await db.meetings.get(meetingId)
+      if (!meeting) throw new Error(`Meeting ${meetingId} not found`)
+      const template = templateFromMeeting(meeting, name.trim(), ids())
+      await db.templates.put(template)
+      return template
+    },
+    remove: (id: string) => db.templates.delete(id),
   }
 
   const guests = {
@@ -204,7 +234,7 @@ export function createRepository(db: TommyDB, options: { now?: () => number; ids
     },
   }
 
-  return { db, settings, clubs, meetings, records, members, guests }
+  return { db, settings, clubs, meetings, records, members, guests, templates }
 }
 
 export type Repository = ReturnType<typeof createRepository>

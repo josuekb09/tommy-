@@ -256,3 +256,84 @@ describe("legacy v1 migration", () => {
     await Dexie.delete(legacyName)
   })
 })
+
+describe("meeting builder storage", () => {
+  it("reorders items and segments, and puts a brief right before its speech", async () => {
+    const { meeting, item: ada } = await meetingWithSpeaker()
+    const ben = await repo.meetings.addItem(meeting.id, "prepared_speeches", { role: "Speaker", personName: "Ben", timing: speech })
+    await repo.meetings.addItem(
+      meeting.id,
+      "prepared_speeches",
+      { role: "EvaluatorBrief", personName: "Eva", evaluatesItemId: ben.id, timing: profileFor("EvaluatorBrief", defaultRules) },
+      { before: ben.id },
+    )
+    await repo.meetings.moveItem(meeting.id, ada.id, 2)
+    const segments = (await repo.meetings.get(meeting.id))!.segments
+    expect(segments[1].items.map(i => [i.personName, i.order])).toEqual([
+      ["Eva", 0],
+      ["Ben", 1],
+      ["Ada Lovelace", 2],
+    ])
+    await repo.meetings.moveSegment(meeting.id, segments[3].id, -1)
+    expect((await repo.meetings.get(meeting.id))!.segments.map(s => s.kind)).toEqual([
+      "opening",
+      "prepared_speeches",
+      "evaluations",
+      "table_topics",
+      "reports",
+      "other",
+    ])
+  })
+
+  it("saves a meeting as a template without names, and starts a new current meeting from it", async () => {
+    const { meeting, item } = await meetingWithSpeaker()
+    await repo.meetings.addItem(meeting.id, "evaluations", {
+      role: "Evaluator",
+      personName: "Eva",
+      evaluatesItemId: item.id,
+      timing: profileFor("Evaluator", defaultRules),
+    })
+    await repo.meetings.addItem(meeting.id, "table_topics", {
+      role: "TableTopicsSpeaker",
+      personName: "Gia",
+      guest: true,
+      timing: profileFor("TableTopicsSpeaker", defaultRules),
+    })
+    const template = await repo.templates.saveMeeting(meeting.id, " Our format ")
+    expect(template.name).toBe("Our format")
+    expect(await repo.templates.list()).toHaveLength(1)
+
+    const club = { ...(await repo.clubs.current()), defaultRules: { ...defaultRules, graceSeconds: 15 } }
+    const next = await repo.meetings.createFromTemplate(template, club)
+    expect((await repo.meetings.current()).id).toBe(next.id)
+    const items = next.segments.flatMap(s => s.items)
+    expect(items.map(i => [i.role, i.personName])).toEqual([
+      ["Speaker", ""],
+      ["Evaluator", ""],
+    ])
+    expect(items[1].evaluatesItemId).toBe(items[0].id)
+    expect(items[0].timing.graceSeconds).toBe(15)
+    // The meeting it came from is untouched.
+    expect((await repo.meetings.get(meeting.id))!.segments.flatMap(s => s.items).map(i => i.personName)).toEqual(["Ada Lovelace", "Gia", "Eva"])
+  })
+
+  it("adds members as new people even when a similar name exists", async () => {
+    await repo.members.add("Josué Kabuya")
+    await repo.members.add(" Josue Kabuya ")
+    expect((await repo.members.list()).map(m => m.name)).toEqual(["Josue Kabuya", "Josué Kabuya"])
+  })
+
+  it("exports and imports templates and guest markers", async () => {
+    const { meeting } = await meetingWithSpeaker()
+    await repo.meetings.addItem(meeting.id, "table_topics", {
+      role: "TableTopicsSpeaker",
+      personName: "Gia",
+      guest: true,
+      timing: profileFor("TableTopicsSpeaker", defaultRules),
+    })
+    await repo.templates.saveMeeting(meeting.id, "Ours")
+    const envelope = parseExport(JSON.stringify(await exportAll(db)))
+    expect(envelope.data.templates).toHaveLength(1)
+    expect(envelope.data.meetings[0].segments.flatMap(s => s.items).find(i => i.personName === "Gia")?.guest).toBe(true)
+  })
+})

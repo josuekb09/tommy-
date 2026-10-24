@@ -1,4 +1,5 @@
 import type { AgendaRole, ClubRules, Meeting, SegmentKind, TimeEdit, TimedRecord, TimeResult } from "../domain"
+import { personLabel } from "./agenda"
 import { formatClock, roleLabels } from "./profiles"
 import { resultFor } from "./timing"
 
@@ -7,6 +8,7 @@ export type ReportRow = {
   segment: SegmentKind
   name: string
   role: AgendaRole
+  guest: boolean
   elapsedMs: number
   time: string
   result: TimeResult
@@ -29,8 +31,9 @@ export function reportRows(meeting: Meeting, records: TimedRecord[], rules: Pick
           {
             itemId: item.id,
             segment: segment.kind,
-            name: item.personName,
+            name: personLabel(item),
             role: item.role,
+            guest: !!item.guest,
             elapsedMs: record.elapsedMs,
             time: formatClock(record.elapsedMs),
             result: resultFor(record.elapsedMs, item.timing, rules.withinRule),
@@ -44,6 +47,7 @@ export function reportRows(meeting: Meeting, records: TimedRecord[], rules: Pick
 export const reportText = (rows: ReportRow[]) =>
   rows
     .map(
-      row => `${row.name} (${roleLabels[row.role]}): ${row.time}, ${resultLabels[row.result].toLowerCase()}${row.edit ? ` [edited: ${row.edit.reason}]` : ""}`,
+      row =>
+        `${row.name} (${roleLabels[row.role]}${row.guest ? ", guest" : ""}): ${row.time}, ${resultLabels[row.result].toLowerCase()}${row.edit ? ` [edited: ${row.edit.reason}]` : ""}`,
     )
     .join("\n")

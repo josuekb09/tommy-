@@ -31,6 +31,9 @@ src/engine/    pure logic: no React, no DOM, no storage. The clock is always inj
                portable timer with events (timer.ts), shared vector runner (vectors.test.ts)
   profiles.ts  timing profile library, club-rule resolution (resolveProfile), labels, m:ss helpers
   range.ts     profileFromRange: agenda time text → profile, or null with a reason
+  agenda.ts    meeting order, moves, "next" across segments, evaluator pairing and warnings
+  people.ts    lenient name matching (case, accents, typos): suggests only, never merges
+  templates.ts built-in templates (ToastED, Cape Town, Pinelands), save as / start from template
   signal-output.ts  SignalOutput interface, change-only publisher, displayAt, fake device output
   explain.ts   "Explain the signals" card built from the club rules
   report.ts    Timer's report rows
@@ -39,6 +42,7 @@ src/storage/   db.ts (Dexie schema), repository.ts (the only code that touches I
                schema.ts (zod export format), export-import.ts, migrate-legacy.ts (v1 → v2, once)
 src/ui/        App.tsx (shell + hash routes), hooks.ts, components.tsx, runtime.ts (db, repo, clock),
                timers.ts (one engine timer per agenda item), signals.tsx (label, icon, pattern per signal),
+               people.tsx (PersonField, MembersCard), timing-field.tsx (typed agenda time + live preview),
                speaker-feed.ts + signal-channel.ts (publish to speaker windows), present.ts (windows, PNGs),
                screens/ (incl. SpeakerView for #/speaker and #/zoom)
 test-vectors/  timing.json: shared timing scenarios, also run by the device firmware
@@ -66,6 +70,8 @@ docs/          AUDIT.md, TIMING_SPEC.md (normative timing rules for app and firm
   - Outputs derive the clock locally and never freeze on a wrong colour.
   - Names never reach an output in contest mode.
 - **`profileFromRange` never guesses.** Anything ambiguous returns `{ profile: null, reason }`.
+- **Similar names are only suggested.** `matchPeople` ranks members and guests; a person is linked only when the Timer picks them (or types the identical name).
+- **An evaluator's brief is its own item** (`EvaluatorBrief`, same person, same `evaluatesItemId`), placed just before the speech. Pairing warnings never block.
 
 ## Commands
 
