@@ -20,3 +20,6 @@ playwright-report/
 
 # TypeScript build cache
 *.tsbuildinfo
+
+# Vite PWA dev service worker
+dev-dist/

@@ -1,0 +1,9 @@
+dist
+dev-dist
+design
+node_modules
+test-results
+playwright-report
+package-lock.json
+Tommy 3D printing
+*.md

@@ -1,56 +1,66 @@
 import { describe, expect, it } from "vitest"
-import { reportRows } from "./report"
-import { defaultSettings, presets, type Segment, type Turn } from "./types"
+import type { Meeting } from "../domain"
+import { defaultRules, profileFor } from "./profiles"
+import { reportRows, reportText } from "./report"
+import { buildRecord, createWallClock } from "./timing"
 
-describe("report engine", () => {
-  it("groups only the requested segment's completed turns with stable IDs", () => {
-    const segment: Segment = {
+const speech = profileFor("Speaker", defaultRules)
+const meeting: Meeting = {
+  id: "m",
+  date: "2026-10-24",
+  status: "live",
+  createdAt: 0,
+  updatedAt: 0,
+  segments: [
+    {
       id: "s",
-      type: "evaluations",
-      turns: [{ id: "t", name: "Eva", role: "Evaluation", thresholds: presets.Evaluation, status: "done", elapsedMs: 145000 }]
-    }
-    expect(reportRows(segment, defaultSettings)).toEqual([
-      { id: "t", name: "Eva", role: "Evaluation", time: "2:25", within: true, edited: false }
+      kind: "prepared_speeches",
+      items: [
+        { id: "b", order: 1, role: "Speaker", personName: "Ben", timing: speech },
+        { id: "a", order: 0, role: "Speaker", personName: "Ada", timing: speech },
+        { id: "c", order: 2, role: "Speaker", personName: "Cy", timing: speech },
+      ],
+    },
+  ],
+}
+
+describe("report rows", () => {
+  it("lists stopped items in agenda order with their result and edit reason", () => {
+    const records = [
+      buildRecord(
+        "a",
+        "m",
+        [
+          { type: "start", at: 0 },
+          { type: "stop", at: 372_000 },
+        ],
+        speech,
+      ),
+      buildRecord(
+        "b",
+        "m",
+        [
+          { type: "start", at: 0 },
+          { type: "stop", at: 200_000 },
+          { type: "edit", at: 1, ms: 265_000, reason: "Late start" },
+        ],
+        speech,
+      ),
+      buildRecord("c", "m", [{ type: "start", at: 0 }], speech),
+    ]
+    const rows = reportRows(meeting, records, defaultRules)
+    expect(rows.map(row => [row.name, row.time, row.result, row.edit?.reason])).toEqual([
+      ["Ada", "6:12", "within", undefined],
+      ["Ben", "4:25", "under", "Late start"],
     ])
+    expect(reportText(rows)).toBe("Ada (Speaker): 6:12, within time\nBen (Speaker): 4:25, under time [edited: Late start]")
   })
+})
 
-  it("preserves distinct identities for turns sharing the exact same name and role", () => {
-    const turn1: Turn = {
-      id: "turn-1",
-      name: "Taylor Brooks",
-      role: "Table Topics",
-      thresholds: presets["Table Topics"],
-      status: "done",
-      elapsedMs: 75000
-    }
-    const turn2: Turn = {
-      id: "turn-2",
-      name: "Taylor Brooks",
-      role: "Table Topics",
-      thresholds: presets["Table Topics"],
-      status: "done",
-      elapsedMs: 110000
-    }
-    const segment: Segment = {
-      id: "tt-seg",
-      type: "tableTopics",
-      turns: [turn1, turn2]
-    }
-
-    const rows = reportRows(segment, defaultSettings)
-    expect(rows).toHaveLength(2)
-    expect(rows[0].id).toBe("turn-1")
-    expect(rows[0].time).toBe("1:15")
-    expect(rows[1].id).toBe("turn-2")
-    expect(rows[1].time).toBe("1:50")
-
-    // Editing turn-1 by ID must not modify turn-2
-    const editedTurn1: Turn = { ...turn1, elapsedMs: 90000, edited: true }
-    const updatedTurns = segment.turns.map(t => t.id === editedTurn1.id ? editedTurn1 : t)
-    const updatedRows = reportRows({ ...segment, turns: updatedTurns }, defaultSettings)
-    expect(updatedRows[0].time).toBe("1:30")
-    expect(updatedRows[0].edited).toBe(true)
-    expect(updatedRows[1].time).toBe("1:50")
-    expect(updatedRows[1].edited).toBe(false)
+describe("wall clock", () => {
+  it("never runs backwards when the system clock is corrected", () => {
+    const readings = [1_000, 2_000, 1_500, 2_500]
+    const clock = createWallClock(() => readings.shift()!)
+    expect([clock(), clock(), clock(), clock()]).toEqual([1_000, 2_000, 2_000, 2_500])
   })
 })

@@ -1,7 +1,16 @@
 import React from "react"
 import { createRoot } from "react-dom/client"
-import { registerSW } from "virtual:pwa-register"
-import App from "./App"
+import App from "./ui/App"
+import { boot } from "./ui/runtime"
 import "./styles.css"
-registerSW({ immediate: true })
-createRoot(document.getElementById("root")!).render(<React.StrictMode><App /></React.StrictMode>)
+
+const root = createRoot(document.getElementById("root")!)
+boot()
+  .catch(error => console.error("[Tommy] Startup failed", error))
+  .finally(() =>
+    root.render(
+      <React.StrictMode>
+        <App />
+      </React.StrictMode>,
+    ),
+  )

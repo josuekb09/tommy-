@@ -31,21 +31,21 @@ describe("audio alert lifecycle", () => {
       frequency: { setValueAtTime: vi.fn() },
       connect: vi.fn(),
       start: vi.fn(),
-      stop: vi.fn()
+      stop: vi.fn(),
     }
     const mockGain = {
       gain: {
         setValueAtTime: vi.fn(),
-        exponentialRampToValueAtTime: vi.fn()
+        exponentialRampToValueAtTime: vi.fn(),
       },
-      connect: vi.fn()
+      connect: vi.fn(),
     }
     const mockCtx = {
       state: "running",
       currentTime: 10,
       destination: {},
       createOscillator: vi.fn().mockReturnValue(mockOsc),
-      createGain: vi.fn().mockReturnValue(mockGain)
+      createGain: vi.fn().mockReturnValue(mockGain),
     } as unknown as AudioContext
 
     _setSharedAudioContextForTesting(mockCtx)
