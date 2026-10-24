@@ -118,6 +118,13 @@ describe("report builder", () => {
   })
 })
 
+describe("agenda-only lines", () => {
+  it("never appear in the report", () => {
+    const withIntro = meeting(["opening", [item("gi", "Grammarian", "Gus", { timed: false })]], ["prepared_speeches", [item("s1", "Speaker", "Ada")]])
+    expect(buildReport(withIntro, [], rules).groups.flatMap(g => g.lines.map(l => l.name))).toEqual(["Ada"])
+  })
+})
+
 describe("spoken report", () => {
   const report = buildReport(agenda, records, rules)
 

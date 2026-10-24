@@ -102,6 +102,10 @@ export function templateFromMeeting(meeting: Meeting, name: string, id: string):
           ...(item.evaluatesItemId && { evaluatesItemId: item.evaluatesItemId }),
           ...(item.profileId && { profileId: item.profileId }),
           timing: item.timing,
+          ...(item.timed === false && { timed: false as const }),
+          ...(item.roleAsWritten && { roleAsWritten: item.roleAsWritten }),
+          ...(item.extraRoles?.length && { extraRoles: item.extraRoles }),
+          ...(item.event && { event: item.event }),
         })),
     })),
   }
@@ -117,6 +121,10 @@ export function segmentsFromTemplate(template: Template, ids: () => string, rule
   const segments = template.segments.map(segment => ({
     id: ids(),
     kind: segment.kind,
+    ...(segment.title && { title: segment.title }),
+    ...(segment.participantTiming && {
+      participantTiming: resolveProfile(definitionOf(segment.participantTiming, undefined, clubProfiles), rules, true),
+    }),
     items: sortedItems(segment).map((item, order) => {
       const { evaluatesItemId, ...rest } = item
       const pairedWith = evaluatesItemId && newIds.get(evaluatesItemId)

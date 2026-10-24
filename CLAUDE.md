@@ -14,6 +14,7 @@ Tommy helps the Timer at a Toastmasters meeting. It times each speaker, shows gr
 - TypeScript (strict), React 19, Vite 8.
 - `vite-plugin-pwa` (Workbox, prompt-to-update, fully precached, works offline).
 - IndexedDB via Dexie (`dexie`, `dexie-react-hooks`), and `zod` for validating files and API responses.
+- Agenda import: Google Gemini (`gemini-3.8-flash`, free tier) via REST from a Cloudflare Pages Function; `wrangler` for local dev.
 - Tests:
   - Vitest for unit and storage tests, with `fake-indexeddb`.
   - Testing Library + jsdom for component tests (opt in per file with `// @vitest-environment jsdom`).
@@ -39,6 +40,8 @@ src/engine/    pure logic: no React, no DOM, no storage. The clock is always inj
   report/      Timer's report: build.ts (groups, results, reasons, award eligibility),
                speech.ts (read-aloud sentences), share.ts (plain WhatsApp text)
   audio.ts     threshold tone (the only browser-API module in engine/; it stays outside the timing core)
+  import/      agenda import: extraction.ts (the model's JSON schema, zod), roles.ts (printed role synonyms),
+               build.ts (clean-up: timings, pairing, briefs, names, schedule check, flags), wire.ts (API contract)
 src/storage/   db.ts (Dexie schema), repository.ts (the only code that touches IndexedDB),
                schema.ts (zod export format), export-import.ts, migrate-legacy.ts (v1 → v2, once)
 src/ui/        App.tsx (shell + hash routes), hooks.ts, components.tsx, runtime.ts (db, repo, clock),
@@ -47,6 +50,9 @@ src/ui/        App.tsx (shell + hash routes), hooks.ts, components.tsx, runtime.
                read-aloud.ts (pause/skip/voice), screens/PrintLog.tsx (#/print, Timer's log for paper),
                speaker-feed.ts + signal-channel.ts (publish to speaker windows), present.ts (windows, PNGs),
                screens/ (incl. SpeakerView for #/speaker and #/zoom)
+server/extract/ provider interface (AgendaExtractor), Gemini extractor, prompt, /api handler (shared by functions/ and scripts/)
+functions/     Cloudflare Pages Functions: api/parse-agenda.ts (the only place the model API key is used)
+scripts/       check-secrets.mjs (fails the build if a key or provider call reaches dist/)
 test-vectors/  timing.json: shared timing scenarios, also run by the device firmware
 tests/e2e/     Playwright specs
 docs/          AUDIT.md, TIMING_SPEC.md (normative timing rules for app and firmware), SIGNAL_OUTPUT.md
@@ -72,6 +78,8 @@ docs/          AUDIT.md, TIMING_SPEC.md (normative timing rules for app and firm
   - Outputs derive the clock locally and never freeze on a wrong colour.
   - Names never reach an output in contest mode.
 - **`profileFromRange` never guesses.** Anything ambiguous returns `{ profile: null, reason }`.
+- **The model transcribes; our code interprets.** The extractor returns text as printed; roles, timings, pairings and flags come from `src/engine/import/build.ts`, which is tested on recorded responses. Unreadable is `null` with a reason, never a guess.
+- **The Gemini key never reaches the browser.** `GEMINI_API_KEY` lives in `.env.local` (dev, gitignored) and a Cloudflare Pages secret (production). The browser only calls `/api/parse-agenda` on its own origin. `npm run build` ends with `check:secrets`.
 - **Similar names are only suggested.** `matchPeople` ranks members and guests; a person is linked only when the Timer picks them (or types the identical name).
 - **The report lists every agenda item.** No recorded time is "Not timed", never 0:00. Award eligibility needs a result within the window, using `qualifyingWindow` (the same one `resultFor` uses), and every "not eligible" has a reason in words.
 - **An evaluator's brief is its own item** (`EvaluatorBrief`, same person, same `evaluatesItemId`), placed just before the speech. Pairing warnings never block.
@@ -88,6 +96,8 @@ npm run format         # Prettier (write); format:check to verify
 npm run build          # type check + production build to dist/
 npm run preview        # serve dist/ at http://localhost:4173
 npm run test:e2e       # Playwright (builds and previews automatically)
+npm run dev:api        # build + wrangler pages dev on :8788 (serves /api with GEMINI_API_KEY from .env.local)
+npm run check:secrets  # scan dist/ for keys and direct provider calls (also runs at the end of build)
 ```
 
 Before saying a task is done, run: `npm run typecheck && npm run lint && npm test && npm run test:e2e`.

@@ -1,5 +1,5 @@
 import type { AgendaItem, AgendaRole, ClubRules, Meeting, ReportStyle, TimeEdit, TimedRecord, TimeResult } from "../../domain"
-import { orderedItems, personLabel } from "../agenda"
+import { personLabel, timedItems } from "../agenda"
 import { formatClock, rangeLabel, roleLabels } from "../profiles"
 import { qualifyingWindow, resultFor, stateOf } from "../timing"
 
@@ -137,7 +137,7 @@ export function buildReport(
   rules: Pick<ClubRules, "withinRule" | "reportStyle" | "tableTopicsGuestsEligible">,
 ): Report {
   const byItem = new Map(records.map(record => [record.agendaItemId, record]))
-  const lines = orderedItems(meeting).map(item => lineFor(item, byItem.get(item.id), rules))
+  const lines = timedItems(meeting).map(item => lineFor(item, byItem.get(item.id), rules))
   const groups = groupOrder.map(key => ({ key, label: groupLabels[key], lines: lines.filter(line => line.group === key) })).filter(group => group.lines.length)
   const awards = (Object.keys(awardLabels) as AwardCategory[])
     .map(category => {

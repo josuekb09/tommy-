@@ -15,9 +15,20 @@ import {
   Trash2,
   UserPlus,
 } from "lucide-react"
-import type { AgendaItem, AgendaRole, Meeting, Segment, SegmentKind, Template } from "../../domain"
-import { agendaWarnings, duplicateLast, evaluatingLabel, nextGuestName, nextInOrder, orderedItems, personLabel, sortedItems } from "../../engine/agenda"
-import { defaultProfileIdForRole, formatClock, profileFor, rangeLabel, roleLabels, segmentLabels } from "../../engine/profiles"
+import { isTimed, type AgendaItem, type AgendaRole, type Meeting, type Segment, type SegmentKind, type Template } from "../../domain"
+import {
+  agendaWarnings,
+  duplicateLast,
+  evaluatingLabel,
+  nextGuestName,
+  nextInOrder,
+  orderedItems,
+  participantTiming,
+  personLabel,
+  segmentTitle,
+  sortedItems,
+} from "../../engine/agenda"
+import { defaultProfileIdForRole, formatClock, profileFor, rangeLabel, roleLabels } from "../../engine/profiles"
 import { builtInTemplates } from "../../engine/templates"
 import { stateOf } from "../../engine/timing"
 import { RecordedTimeError } from "../../storage/repository"
@@ -38,7 +49,7 @@ const rolesFor: Record<SegmentKind, AgendaRole[]> = {
 const pairedRoles: AgendaRole[] = ["Evaluator", "EvaluatorBrief"]
 
 type Data = AppData & { meeting: Meeting }
-type SheetState = { type: "add"; kind: SegmentKind } | { type: "edit"; itemId: string } | { type: "new" } | { type: "template" }
+type SheetState = { type: "add"; segmentId: string } | { type: "edit"; itemId: string } | { type: "new" } | { type: "template" }
 
 export function MeetingScreen({
   data,
@@ -65,7 +76,7 @@ export function MeetingScreen({
 
   /** Hands the agenda, in this order, to the Timer: the first person not yet timed comes up first. */
   const startMeeting = async () => {
-    const first = nextInOrder(meeting, undefined, item => statusOf(item) === "idle")
+    const first = nextInOrder(meeting, undefined, item => isTimed(item) && statusOf(item) === "idle")
     if (!first) return notify(orderedItems(meeting).length ? "Everyone on the agenda has been timed" : "Add someone to the agenda first")
     if (meeting.status === "draft") await repo.meetings.update(meeting.id, current => ({ ...current, status: "live" }))
     open(first.id)
@@ -134,7 +145,7 @@ export function MeetingScreen({
             readOnly={readOnly}
             open={open}
             edit={itemId => setSheet({ type: "edit", itemId })}
-            add={() => setSheet({ type: "add", kind: segment.kind })}
+            add={() => setSheet({ type: "add", segmentId: segment.id })}
             notify={notify}
           />
         ))}
@@ -151,11 +162,11 @@ export function MeetingScreen({
         </button>
       </div>
 
-      {sheet?.type === "add" && <ItemSheet data={data} kind={sheet.kind} close={close} done={done} />}
+      {sheet?.type === "add" && <ItemSheet data={data} segment={meeting.segments.find(s => s.id === sheet.segmentId)!} close={close} done={done} />}
       {editing && (
         <ItemSheet
           data={data}
-          kind={meeting.segments.find(segment => segment.items.some(item => item.id === editing.id))!.kind}
+          segment={meeting.segments.find(segment => segment.items.some(item => item.id === editing.id))!}
           item={editing}
           close={close}
           done={done}
@@ -190,7 +201,7 @@ function SegmentSection({
 }) {
   const { meeting, records } = data
   const items = sortedItems(segment)
-  const label = segmentLabels[segment.kind]
+  const label = segmentTitle(segment)
   const list = useRef<HTMLOListElement>(null)
   const move = (itemId: string, toIndex: number) => void repo.meetings.moveItem(meeting.id, itemId, toIndex)
   const lastItem = items.at(-1)
@@ -247,7 +258,7 @@ function SegmentSection({
                 <small>
                   {item.personName.trim() ? roleLabels[item.role] : "No name yet"}
                   {item.speechTitle ? ` · ${item.speechTitle}` : ""}
-                  {item.pathwaysProject ? ` · ${item.pathwaysProject}` : ""} · {rangeLabel(item.timing)}
+                  {item.pathwaysProject ? ` · ${item.pathwaysProject}` : ""} · {isTimed(item) ? rangeLabel(item.timing) : "agenda only, not timed"}
                 </small>
                 {evaluating && <small className="evaluating">{evaluating}</small>}
                 {status !== "idle" && (
@@ -336,8 +347,7 @@ function TableTopicsQuickAdd({ data, readOnly, notify }: { data: Data; readOnly:
       await repo.meetings.addItem(meeting.id, "table_topics", {
         role: "TableTopicsSpeaker",
         ...saved,
-        profileId: "table_topics",
-        timing: profileFor("TableTopicsSpeaker", data.rules, data.clubProfiles),
+        ...participantTiming(meeting, data.rules, data.clubProfiles),
       })
       notify(`${saved.personName} added to Table Topics`)
     })
@@ -361,18 +371,19 @@ const printedTiming = (item: AgendaItem) =>
 /** Add or edit one agenda item: role, person, title, project, timing and, for evaluators, the speech they evaluate. */
 function ItemSheet({
   data,
-  kind,
+  segment,
   item,
   close,
   done,
 }: {
   data: Data
-  kind: SegmentKind
+  segment: Segment
   item?: AgendaItem
   close: () => void
   done: (message: string) => void
 }) {
   const { meeting, rules, clubProfiles } = data
+  const { kind } = segment
   const items = orderedItems(meeting)
   const people = useMemo(() => peopleOf(data.members, data.guests), [data.members, data.guests])
   const roles = item && !rolesFor[kind].includes(item.role) ? [item.role, ...rolesFor[kind]] : rolesFor[kind]
@@ -392,6 +403,7 @@ function ItemSheet({
       : { profileId: defaultProfileIdForRole(role), text: "" },
   )
   const [withBrief, setWithBrief] = useState(false)
+  const [timedOn, setTimedOn] = useState(item ? isTimed(item) : true)
 
   const paired = pairedRoles.includes(role)
   const hasBrief = items.some(other => other.role === "EvaluatorBrief" && other.evaluatesItemId === evaluates && other.id !== item?.id)
@@ -413,6 +425,7 @@ function ItemSheet({
       evaluatesItemId: paired && evaluates ? evaluates : undefined,
       profileId: resolved.profileId,
       timing: resolved.timing,
+      timed: timedOn ? undefined : (false as const),
     }
     if (item) {
       await repo.meetings.updateItem(meeting.id, item.id, fields)
@@ -423,7 +436,7 @@ function ItemSheet({
         ))
           await repo.meetings.updateItem(meeting.id, brief.id, { personName: saved.personName, personId: saved.personId, guest: saved.guest })
     } else {
-      await repo.meetings.addItem(meeting.id, kind, fields)
+      await repo.meetings.addItem(meeting.id, { segmentId: segment.id }, fields)
     }
     if (role === "Evaluator" && withBrief && evaluates && !hasBrief)
       await repo.meetings.addItem(
@@ -457,7 +470,7 @@ function ItemSheet({
   }
 
   return (
-    <Sheet title={item ? `Edit ${personLabel(item)}` : `Add to ${segmentLabels[kind]}`} eyebrow="Agenda" onClose={close}>
+    <Sheet title={item ? `Edit ${personLabel(item)}` : `Add to ${segmentTitle(segment)}`} eyebrow="Agenda" onClose={close}>
       <label className="field-label">
         Role
         <select
@@ -505,7 +518,12 @@ function ItemSheet({
         </label>
       )}
       {role === "Evaluator" && evaluates && !hasBrief && <Toggle label="Add a 1:00 brief before the speech" value={withBrief} onChange={setWithBrief} />}
-      <TimingField role={role} value={timing} onChange={setTiming} rules={rules} clubProfiles={clubProfiles} locked={timed ? item!.timing : undefined} />
+      {!timed && <Toggle label="Timed by the Timer" value={timedOn} onChange={setTimedOn} />}
+      {timedOn ? (
+        <TimingField role={role} value={timing} onChange={setTiming} rules={rules} clubProfiles={clubProfiles} locked={timed ? item!.timing : undefined} />
+      ) : (
+        <p className="sheet-note">Shown on the agenda only: the Timer skips it and it is not in the report.</p>
+      )}
       <button className="primary-button sheet-submit" onClick={() => void save()} disabled={!canSave}>
         {item ? <PencilLine aria-hidden="true" /> : <Plus aria-hidden="true" />}
         {item ? "Save changes" : "Add to agenda"}

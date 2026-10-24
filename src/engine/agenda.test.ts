@@ -1,6 +1,20 @@
 import { describe, expect, it } from "vitest"
 import type { AgendaItem, AgendaRole, Meeting, SegmentKind } from "../domain"
-import { agendaWarnings, duplicateLast, evaluatingLabel, insertItem, moveItem, moveSegment, nextInOrder, orderedItems, personLabel, queueOf } from "./agenda"
+import {
+  agendaWarnings,
+  duplicateLast,
+  participantTiming,
+  segmentTitle,
+  timedItems,
+  evaluatingLabel,
+  insertItem,
+  moveItem,
+  moveSegment,
+  nextInOrder,
+  orderedItems,
+  personLabel,
+  queueOf,
+} from "./agenda"
 import { defaultRules, profileFor } from "./profiles"
 
 const item = (id: string, role: AgendaRole, personName: string, extra: Partial<AgendaItem> = {}): AgendaItem => ({
@@ -158,5 +172,26 @@ describe("queue", () => {
     const queue = queueOf(m, "e1", done(["s1", "t1"]))
     expect([ids(queue.done), ids(queue.upcoming)]).toEqual([["s1", "t1"], ["s2"]])
     expect(queueOf(m, undefined, done([])).current).toBeUndefined()
+  })
+})
+
+describe("agenda-only lines and imported segments", () => {
+  const m = meeting(
+    ["opening", [item("intro", "Grammarian", "Gus", { timed: false }), item("tm", "Toastmaster", "Tess")]],
+    ["prepared_speeches", [item("s1", "Speaker", "Ada")]],
+    ["table_topics", [item("ttm", "TableTopicsMaster", "Tia", { timed: false })]],
+  )
+
+  it("leaves agenda-only lines out of what the Timer times", () => {
+    expect(timedItems(m).map(i => i.id)).toEqual(["tm", "s1"])
+  })
+
+  it("uses a printed segment title and the printed Table Topics timing", () => {
+    expect(segmentTitle({ kind: "other", title: "Closing" })).toBe("Closing")
+    expect(segmentTitle({ kind: "reports" })).toBe("Reports")
+    expect(participantTiming(m, defaultRules)).toMatchObject({ profileId: "table_topics", timing: { green: 60, red: 120 } })
+    const printed = { ...profileFor("TableTopicsSpeaker", defaultRules), red: 150 }
+    const withPrinted = { ...m, segments: m.segments.map(s => (s.kind === "table_topics" ? { ...s, participantTiming: printed } : s)) }
+    expect(participantTiming(withPrinted, defaultRules)).toEqual({ timing: printed })
   })
 })

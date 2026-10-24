@@ -1,5 +1,5 @@
-import type { AgendaItem, Meeting, Segment } from "../domain"
-import { roleLabels } from "./profiles"
+import { isTimed, type AgendaItem, type ClubRules, type Meeting, type ProfileDefinition, type Segment } from "../domain"
+import { profileFor, roleLabels, segmentLabels } from "./profiles"
 
 /** A segment's items in agenda order. */
 export const sortedItems = (segment: Segment) => [...segment.items].sort((a, b) => a.order - b.order)
@@ -141,4 +141,16 @@ export function queueOf(meeting: Meeting, currentId: string | undefined, isDone:
   const current = items.find(item => item.id === currentId)
   const others = items.filter(item => item !== current)
   return { done: others.filter(isDone), current, upcoming: others.filter(item => !isDone(item)) }
+}
+
+/** The segment's printed heading, or its kind's label. */
+export const segmentTitle = (segment: Pick<Segment, "kind" | "title">) => segment.title ?? segmentLabels[segment.kind]
+
+/** The items the Timer times, in agenda order: agenda-only lines are left out. */
+export const timedItems = (meeting: Meeting) => orderedItems(meeting).filter(isTimed)
+
+/** Timing for a Table Topics participant added live: what the agenda printed for the segment, else the club's profile. */
+export function participantTiming(meeting: Meeting, rules: ClubRules, clubProfiles: Record<string, ProfileDefinition> = {}) {
+  const printed = meeting.segments.find(s => s.kind === "table_topics" && s.participantTiming)?.participantTiming
+  return printed ? { timing: printed } : { profileId: "table_topics", timing: profileFor("TableTopicsSpeaker", rules, clubProfiles) }
 }

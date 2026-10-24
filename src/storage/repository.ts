@@ -110,12 +110,22 @@ export function createRepository(db: TommyDB, options: { now?: () => number; ids
         return next
       })
     },
-    /** Adds an item at the end of its segment, or just before another item of that segment. */
-    async addItem(meetingId: string, kind: SegmentKind, item: Omit<AgendaItem, "id" | "order">, options: { before?: string } = {}): Promise<AgendaItem> {
+    /**
+     * Adds an item at the end of a segment, or just before another item of
+     * that segment. The target is a segment id, or a kind (its first segment,
+     * created if the meeting has none).
+     */
+    async addItem(
+      meetingId: string,
+      target: SegmentKind | { segmentId: string },
+      item: Omit<AgendaItem, "id" | "order">,
+      options: { before?: string } = {},
+    ): Promise<AgendaItem> {
       const created: AgendaItem = { ...item, id: ids(), order: 0 }
       await meetings.update(meetingId, meeting => {
-        const segments = withSegment(meeting.segments, kind, ids)
-        return insertItem({ ...meeting, segments }, segments.find(segment => segment.kind === kind)!.id, created, options.before)
+        if (typeof target !== "string") return insertItem(meeting, target.segmentId, created, options.before)
+        const segments = withSegment(meeting.segments, target, ids)
+        return insertItem({ ...meeting, segments }, segments.find(segment => segment.kind === target)!.id, created, options.before)
       })
       return { ...created, order: (await findItem(meetingId, created.id))?.order ?? 0 }
     },
@@ -153,6 +163,9 @@ export function createRepository(db: TommyDB, options: { now?: () => number; ids
           ...meeting,
           segments: meeting.segments.map(segment => ({
             ...segment,
+            ...(segment.participantTiming && {
+              participantTiming: resolveProfile(definitionOf(segment.participantTiming, undefined, club.profiles), rules, true),
+            }),
             items: segment.items.map(item =>
               timed.has(item.id)
                 ? item

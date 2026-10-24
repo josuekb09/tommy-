@@ -7,3 +7,4 @@ playwright-report
 package-lock.json
 hardware
 *.md
+fixtures

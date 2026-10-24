@@ -117,3 +117,38 @@ describe("templates from meetings", () => {
     expect(segments.map(s => s.kind)).toEqual(["prepared_speeches", "table_topics", "evaluations", "opening", "reports", "other"])
   })
 })
+
+describe("templates keep the shape of an imported agenda", () => {
+  it("keeps segment titles, agenda-only lines, printed roles and the Table Topics timing, and no names or start times", () => {
+    const printed = { ...profileFor("TableTopicsSpeaker", defaultRules), red: 150 }
+    const imported = asMeeting([
+      {
+        id: "o",
+        kind: "other",
+        title: "Closing",
+        items: [
+          {
+            id: "p",
+            order: 0,
+            role: "President",
+            personName: "Pat",
+            timing: profileFor("President", defaultRules),
+            timed: false,
+            roleAsWritten: "President",
+            event: "Awards",
+            plannedStart: "20:57",
+            note: "(CT TM)",
+          },
+        ],
+      },
+      { id: "t", kind: "table_topics", participantTiming: printed, items: [] },
+    ])
+    const template = templateFromMeeting(imported, "Ours", "tpl")
+    expect(template.segments[0]).toMatchObject({ title: "Closing", items: [{ personName: "", timed: false, roleAsWritten: "President", event: "Awards" }] })
+    expect(template.segments[0].items[0]).not.toHaveProperty("plannedStart")
+    expect(template.segments[0].items[0]).not.toHaveProperty("note")
+    const segments = segmentsFromTemplate(template, counter(), { ...defaultRules, graceAppliesToTableTopics: true })
+    expect(segments[0].title).toBe("Closing")
+    expect([segments[1].participantTiming?.red, segments[1].participantTiming?.graceSeconds]).toEqual([150, 30])
+  })
+})

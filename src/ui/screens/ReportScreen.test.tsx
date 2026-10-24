@@ -124,6 +124,8 @@ describe("Timer's report screen", () => {
     expect([...voice.options].map(o => o.textContent)).toEqual(["Browser default (English)", "Daniel (en-GB)", "Samantha (en-US)"])
     await user.selectOptions(voice, "samantha")
     await waitFor(async () => expect((await repo.settings.get()).reportVoice).toBe("samantha"))
+    // The screen reads the voice from live data: wait until it shows the new choice.
+    await waitFor(() => expect((screen.getByLabelText("Voice") as HTMLSelectElement).value).toBe("samantha"))
 
     await user.click(screen.getByRole("button", { name: "Read aloud" }))
     expect(synth.current?.text).toBe("Timer's report.")

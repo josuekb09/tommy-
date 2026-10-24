@@ -16,9 +16,9 @@ import {
   UserPlus,
   Video,
 } from "lucide-react"
-import type { AgendaItem, Meeting, SegmentKind, Signal, TimedRecord, TimeResult } from "../../domain"
-import { evaluatingLabel, nextGuestName, nextInOrder, personLabel, queueOf, sortedItems } from "../../engine/agenda"
-import { activityLabel, formatClock, parseClock, profileFor, rangeLabel, roleLabels, segmentLabels } from "../../engine/profiles"
+import { isTimed, type AgendaItem, type Meeting, type SegmentKind, type Signal, type TimedRecord, type TimeResult } from "../../domain"
+import { evaluatingLabel, nextGuestName, nextInOrder, participantTiming, personLabel, queueOf, segmentTitle, sortedItems } from "../../engine/agenda"
+import { activityLabel, formatClock, parseClock, rangeLabel, roleLabels } from "../../engine/profiles"
 import { resultFor, signalRank, stateOf, type ActionInput, type Timer, type TimerState } from "../../engine/timing"
 import { resultLabels } from "../../engine/report"
 import { playThresholdTone, unlockAudio } from "../../engine/audio"
@@ -51,15 +51,16 @@ export function TimerScreen({ data, readOnly, selectedId, select, notify, openMe
   const statusOf = (item: AgendaItem) => timerStateOf(recordFor.get(item.id)).status
 
   // Which segment and person are on screen: the selection, else whoever is timing, else the next to time.
-  const segments = meeting.segments.filter(segment => timedKinds.includes(segment.kind) || segment.items.length)
+  const segments = meeting.segments.filter(segment => timedKinds.includes(segment.kind) || segment.items.some(isTimed))
   const runningSegment = segments.find(segment => segment.items.some(item => statusOf(item) === "running"))
   const [segmentId, setSegmentId] = useState<string>()
   const segment = segments.find(s => s.id === segmentId) ?? segments.find(s => s.items.some(item => item.id === selectedId)) ?? runningSegment ?? segments[0]
-  const items = sortedItems(segment)
+  // Agenda-only lines (an intro with no time printed, a break) are never timed.
+  const items = sortedItems(segment).filter(isTimed)
   const item =
     items.find(i => i.id === selectedId) ?? items.find(i => ["running", "paused"].includes(statusOf(i))) ?? items.find(i => statusOf(i) !== "stopped")
   // "Next" follows the meeting order across segments, as arranged on the Meeting screen.
-  const next = nextInOrder(meeting, item?.id, i => statusOf(i) === "idle")
+  const next = nextInOrder(meeting, item?.id, i => isTimed(i) && statusOf(i) === "idle")
   const nextSegment = next && meeting.segments.find(s => s.items.some(i => i.id === next.id))
 
   const record = item && recordFor.get(item.id)
@@ -132,13 +133,13 @@ export function TimerScreen({ data, readOnly, selectedId, select, notify, openMe
               select(undefined)
             }}
           >
-            {segmentLabels[s.kind]}
+            {segmentTitle(s)}
           </button>
         ))}
       </div>
 
       <header className="ts-person">
-        <h1 id="timer-person">{item ? personLabel(item) : `No one in ${segmentLabels[segment.kind]}`}</h1>
+        <h1 id="timer-person">{item ? personLabel(item) : `No one in ${segmentTitle(segment)}`}</h1>
         {item ? (
           <p className="ts-range">
             {item.guest && <span className="person-chip guest">Guest</span>}
@@ -153,7 +154,7 @@ export function TimerScreen({ data, readOnly, selectedId, select, notify, openMe
         <div className="ts-next-row">
           <p className="ts-next">
             Next: <b>{next ? personLabel(next) : "no one"}</b>
-            {nextSegment && nextSegment.id !== segment.id && <> · {segmentLabels[nextSegment.kind]}</>}
+            {nextSegment && nextSegment.id !== segment.id && <> · {segmentTitle(nextSegment)}</>}
           </p>
           <button className="text-button ts-queue" onClick={() => setSheet("queue")}>
             <ListOrdered size={16} aria-hidden="true" />
@@ -363,8 +364,9 @@ function QueueSheet({
   const { meeting, records, rules } = data
   const recordOf = (item: AgendaItem) => records.find(record => record.agendaItemId === item.id)
   const statusOf = (item: AgendaItem) => timerStateOf(recordOf(item)).status
-  const segmentOf = (item: AgendaItem) => meeting.segments.find(segment => segment.items.some(i => i.id === item.id))!.kind
-  const queue = queueOf(meeting, currentId, item => statusOf(item) === "stopped")
+  const segmentOf = (item: AgendaItem) => meeting.segments.find(segment => segment.items.some(i => i.id === item.id))!
+  const all = queueOf(meeting, currentId, item => statusOf(item) === "stopped")
+  const queue = { ...all, done: all.done.filter(isTimed), upcoming: all.upcoming.filter(isTimed) }
   const detail = (item: AgendaItem) => {
     const record = recordOf(item)
     const status = statusOf(item)
@@ -391,7 +393,7 @@ function QueueSheet({
                   <button className={`queue-item ${statusOf(item)}`} onClick={() => choose(item.id)} aria-current={item.id === currentId ? "true" : undefined}>
                     <b>{personLabel(item)}</b>
                     <small>
-                      {roleLabelsFor(item)} · {segmentLabels[segmentOf(item)]} · {detail(item)}
+                      {roleLabelsFor(item)} · {segmentTitle(segmentOf(item))} · {detail(item)}
                     </small>
                   </button>
                 </li>
@@ -417,8 +419,7 @@ function GuestSheet({ data, close, added }: { data: AppData & { meeting: Meeting
     const item = await repo.meetings.addItem(data.meeting.id, "table_topics", {
       role: "TableTopicsSpeaker",
       ...saved,
-      profileId: "table_topics",
-      timing: profileFor("TableTopicsSpeaker", data.rules, data.clubProfiles),
+      ...participantTiming(data.meeting, data.rules, data.clubProfiles),
     })
     if (start) await dispatchAndSave(data.meeting.id, item.id, timerFor(item, data.rules.withinRule), { type: "start" })
     added(item.id, start)

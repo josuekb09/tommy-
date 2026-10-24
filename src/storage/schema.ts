@@ -30,11 +30,19 @@ const item = z.object({
   evaluatesItemId: z.string().optional(),
   profileId: z.string().optional(),
   timing: profile,
+  timed: z.literal(false).optional(),
+  roleAsWritten: z.string().optional(),
+  extraRoles: z.array(z.enum(agendaRoles)).optional(),
+  event: z.string().optional(),
+  plannedStart: z.string().optional(),
+  note: z.string().optional(),
 })
 const segment = z.object({
   id: z.string(),
   kind: z.enum(["opening", "prepared_speeches", "table_topics", "evaluations", "reports", "other"]),
   items: z.array(item),
+  title: z.string().optional(),
+  participantTiming: profile.optional(),
 })
 const meeting = z.object({
   id: z.string(),
@@ -42,6 +50,8 @@ const meeting = z.object({
   date: z.string(),
   theme: z.string().optional(),
   wordOfTheDay: z.string().optional(),
+  venue: z.string().optional(),
+  startTime: z.string().optional(),
   segments: z.array(segment),
   status: z.enum(["draft", "live", "finished"]),
   createdAt: z.number(),

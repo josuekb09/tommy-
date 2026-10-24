@@ -337,3 +337,29 @@ describe("meeting builder storage", () => {
     expect(envelope.data.meetings[0].segments.flatMap(s => s.items).find(i => i.personName === "Gia")?.guest).toBe(true)
   })
 })
+
+describe("imported agendas: repeated segments, agenda-only lines, Table Topics timing", () => {
+  it("adds to a given segment when a kind appears twice, and re-applies club rules to the participant timing", async () => {
+    const meeting = await repo.meetings.current()
+    const printed = { ...profileFor("TableTopicsSpeaker", defaultRules), green: 60, amber: 90, red: 150 }
+    await repo.meetings.update(meeting.id, current => ({
+      ...current,
+      segments: [
+        { id: "r1", kind: "reports", items: [] },
+        { id: "tt", kind: "table_topics", items: [], participantTiming: printed },
+        { id: "r2", kind: "reports", title: "Reports after Table Topics", items: [] },
+      ],
+    }))
+    await repo.meetings.addItem(meeting.id, { segmentId: "r2" }, { role: "Timer", personName: "Tom", timing: profileFor("Timer", defaultRules) })
+    await repo.meetings.addItem(meeting.id, "reports", { role: "Grammarian", personName: "Gus", timing: profileFor("Grammarian", defaultRules) })
+    const stored = (await repo.meetings.get(meeting.id))!
+    expect(stored.segments.map(s => [s.id, s.items.map(i => i.personName)])).toEqual([
+      ["r1", ["Gus"]],
+      ["tt", []],
+      ["r2", ["Tom"]],
+    ])
+    await repo.meetings.applyClubRules(meeting.id, { ...(await repo.clubs.current()), defaultRules: { ...defaultRules, graceAppliesToTableTopics: true } })
+    const tt = (await repo.meetings.get(meeting.id))!.segments[1].participantTiming!
+    expect([tt.green, tt.red, tt.graceSeconds]).toEqual([60, 150, 30])
+  })
+})

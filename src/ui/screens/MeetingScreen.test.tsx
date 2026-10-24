@@ -91,7 +91,8 @@ describe("Meeting screen", () => {
     expect(within(section("Prepared speeches")).getByText("Evaluating: Ada")).toBeTruthy()
     expect(screen.getByRole("region", { name: "Check the pairings" }).textContent).toMatch(/^Check the pairingsNo evaluator for Ben\.You can still start/)
     await user.click(screen.getByRole("button", { name: "Start meeting" }))
-    expect(open).toHaveBeenCalledWith(expect.any(String))
+    // Starting marks the meeting live first, then opens the Timer.
+    await waitFor(() => expect(open).toHaveBeenCalledWith(expect.any(String)))
   })
 
   it("suggests similar club members but only links one the Timer picks", async () => {

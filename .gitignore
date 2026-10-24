@@ -23,3 +23,6 @@ playwright-report/
 
 # Vite PWA dev service worker
 dev-dist/
+
+# Wrangler local state
+.wrangler/
