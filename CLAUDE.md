@@ -27,15 +27,18 @@ Tommy helps the Timer at a Toastmasters meeting. It times each speaker, shows gr
 ```
 src/domain/    types only (Club, Member, Guest, Meeting, Segment, AgendaItem, TimingProfile, TimedRecord, settings)
 src/engine/    pure logic: no React, no DOM, no storage. The clock is always injected.
-  timing/      action-log replay (record.ts), signals and results (signal.ts), wall clock (clock.ts)
+  timing/      action-log replay (record.ts), signals and results (signal.ts), wall clock (clock.ts),
+               portable timer with events (timer.ts), shared vector runner (vectors.test.ts)
   profiles.ts  built-in timing profiles, role and segment labels, m:ss helpers
   report.ts    Timer's report rows
   audio.ts     threshold tone (the only browser-API module in engine/; it stays outside the timing core)
 src/storage/   db.ts (Dexie schema), repository.ts (the only code that touches IndexedDB),
                schema.ts (zod export format), export-import.ts, migrate-legacy.ts (v1 → v2, once)
-src/ui/        App.tsx (shell + hash routes), hooks.ts, components.tsx, runtime.ts (db, repo, clock), screens/
+src/ui/        App.tsx (shell + hash routes), hooks.ts, components.tsx, runtime.ts (db, repo, clock),
+               timers.ts (one engine timer per agenda item), screens/
+test-vectors/  timing.json: shared timing scenarios, also run by the device firmware
 tests/e2e/     Playwright specs
-docs/          audit and specs
+docs/          AUDIT.md, TIMING_SPEC.md (normative timing rules for app and firmware)
 ```
 
 ## Key design rules
@@ -46,6 +49,10 @@ docs/          audit and specs
 - **The clock is `createWallClock()`:** `Date.now()` clamped so it never runs backwards. Do not use `performance.now()` for timing, because it stops during device sleep on phones.
 - **Edits require a reason and keep the original value** (`TimeEdit.fromMs`). Removing an item with a recorded time throws `RecordedTimeError` unless the user confirmed.
 - **One writer tab** (Web Locks, `useWriterLock`). Other tabs are read-only.
+- **The UI changes timers only through the engine.** It calls `timerFor(item).dispatch(input)` and then persists the returned action. Cues react to `signalChanged` events, never to re-renders.
+- **Timing behaviour is defined by [docs/TIMING_SPEC.md](docs/TIMING_SPEC.md) and `test-vectors/timing.json`.**
+  - Any change to timing rules needs a new or updated vector in the same commit.
+  - Never edit an expectation just to make code pass.
 
 ## Commands
 

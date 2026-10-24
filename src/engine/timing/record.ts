@@ -45,9 +45,13 @@ export function step(state: TimerState, action: Exclude<TimingAction, { type: "u
     case "reset":
       return state.status === "idle" && !state.offsetsMs.length ? undefined : initialState
     case "offset": {
-      if (state.status === "idle" || !Number.isInteger(action.ms) || action.ms === 0) return undefined
-      const next = { ...state, offsetsMs: [...state.offsetsMs, action.ms] }
-      return state.overrideMs === undefined ? next : { ...next, overrideMs: Math.max(0, state.overrideMs + action.ms) }
+      if (state.status === "idle" || !Number.isInteger(action.ms)) return undefined
+      // A negative offset can only take the time down to zero; the amount that
+      // was actually applied is what gets recorded.
+      const ms = Math.max(action.ms, -elapsedAt(state, action.at))
+      if (ms === 0) return undefined
+      const next = { ...state, offsetsMs: [...state.offsetsMs, ms] }
+      return state.overrideMs === undefined ? next : { ...next, overrideMs: state.overrideMs + ms }
     }
     case "edit": {
       const reason = action.reason.trim()

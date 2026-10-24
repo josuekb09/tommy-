@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { ChevronRight, Maximize2, Minimize2, Pause, PencilLine, Play, Plus, RotateCcw, Square, Undo2, UserPlus } from "lucide-react"
 import type { Meeting, Segment, SegmentKind, Signal, TimedRecord } from "../../domain"
 import { formatClock, parseClock, profileFor, roleLabels, segmentLabels } from "../../engine/profiles"
-import { canUndo, elapsedAt, resultFor, signalAt, signalRank, stateOf, type TimerState } from "../../engine/timing"
+import { signalRank, stateOf, type ActionInput, type Timer, type TimerState } from "../../engine/timing"
 import { resultLabels } from "../../engine/report"
 import { playThresholdTone, unlockAudio } from "../../engine/audio"
 import { Sheet } from "../components"
 import { useSecondTicks, useWakeLock, type AppData } from "../hooks"
-import { clock, repo } from "../runtime"
+import { repo } from "../runtime"
+import { timerFor } from "../timers"
 
 export const signalText: Record<Signal, { label: string; hint: string; cue: string }> = {
   none: { label: "Ready", hint: "No signal yet", cue: "○ READY" },
@@ -52,37 +53,38 @@ export function TimerScreen({
     items.find(i => ["running", "paused"].includes(timerStateOf(recordFor.get(i.id)).status)) ??
     items.find(i => timerStateOf(recordFor.get(i.id)).status !== "stopped")
   const record = item && recordFor.get(item.id)
+  const timer = item && timerFor(item, rules.withinRule, record?.actions)
   const state = timerStateOf(record)
   const running = state.status === "running"
   const now = useSecondTicks(running, record?.actions)
-  const elapsed = elapsedAt(state, now)
-  const signal: Signal = item && state.status !== "idle" ? signalAt(elapsed, item.timing) : "none"
+  const elapsed = timer ? timer.elapsedMs(now) : 0
+  const signal: Signal = timer ? timer.signal(now) : "none"
   const upNext = items.filter(i => i.id !== item?.id && timerStateOf(recordFor.get(i.id)).status !== "stopped")
   const [sheet, setSheet] = useState<"guest" | "edit">()
   const [display, setDisplay] = useState(false)
   const anyRunning = !!runningSegment
 
   useWakeLock(anyRunning || display)
-  useThresholdCues(item?.id, signal, running, settings)
+  useThresholdCues(timer, settings)
 
-  const act = async (action: Parameters<typeof repo.records.append>[2]) => {
-    if (!item || readOnly) return
+  const act = async (input: ActionInput) => {
+    if (!item || !timer || readOnly) return
     unlockAudio()
-    await repo.records.append(meeting.id, item.id, action)
+    await dispatchAndSave(meeting.id, item.id, timer, input)
   }
   const primary = () => {
     if (state.status === "idle") {
       // Only one speaker runs at a time: starting someone pauses whoever is running.
       const other = meeting.segments.flatMap(s => s.items).find(i => i.id !== item?.id && timerStateOf(recordFor.get(i.id)).status === "running")
-      if (other) void repo.records.append(meeting.id, other.id, { type: "pause", at: clock() })
-      return act({ type: "start", at: clock() })
+      if (other) void dispatchAndSave(meeting.id, other.id, timerFor(other, rules.withinRule, recordFor.get(other.id)?.actions), { type: "pause" })
+      return act({ type: "start" })
     }
-    if (state.status === "running") return act({ type: "pause", at: clock() })
-    if (state.status === "paused") return act({ type: "resume", at: clock() })
+    if (state.status === "running") return act({ type: "pause" })
+    if (state.status === "paused") return act({ type: "resume" })
   }
   const reset = () => {
     if (state.status === "stopped" && !confirm(`Reset ${item?.personName}'s recorded time? You can undo this.`)) return
-    void act({ type: "reset", at: clock() }).then(() => notify("Timer reset. Undo is available."))
+    void act({ type: "reset" }).then(() => notify("Timer reset. Undo is available."))
   }
   const selectSegment = (next: Segment) => {
     setSegmentId(next.id)
@@ -159,7 +161,7 @@ export function TimerScreen({
       {stopped && item && (
         <div className="recorded-summary">
           <span>
-            Recorded {formatClock(elapsed)} · {resultLabels[resultFor(elapsed, item.timing, rules.withinRule)]}
+            Recorded {formatClock(elapsed)} · {resultLabels[timer!.result(now)]}
             {record?.edits.length ? " · edited" : ""}
           </span>
           <button className="secondary-button" onClick={() => setSheet("edit")} disabled={readOnly}>
@@ -190,7 +192,7 @@ export function TimerScreen({
         </button>
         <button
           className="secondary-button stop"
-          onClick={() => void act({ type: "stop", at: clock() })}
+          onClick={() => void act({ type: "stop" })}
           disabled={!item || readOnly || (state.status !== "running" && state.status !== "paused")}
         >
           <Square />
@@ -202,7 +204,7 @@ export function TimerScreen({
         {[5, 10, 30, -5].map(seconds => (
           <button
             key={seconds}
-            onClick={() => void act({ type: "offset", at: clock(), ms: seconds * 1000 })}
+            onClick={() => void act({ type: "offset", ms: seconds * 1000 })}
             disabled={!item || readOnly || state.status === "idle"}
             aria-label={`${seconds > 0 ? "Add" : "Subtract"} ${Math.abs(seconds)} seconds`}
           >
@@ -215,7 +217,7 @@ export function TimerScreen({
           <RotateCcw size={16} />
           Reset
         </button>
-        <button onClick={() => void act({ type: "undo", at: clock() })} disabled={!item || readOnly || !canUndo(record?.actions ?? [])}>
+        <button onClick={() => void act({ type: "undo" })} disabled={!timer || readOnly || !timer.canUndo()}>
           <Undo2 size={16} />
           Undo
         </button>
@@ -272,7 +274,7 @@ export function TimerScreen({
           elapsed={elapsed}
           close={() => setSheet(undefined)}
           save={(ms, reason) =>
-            void act({ type: "edit", at: clock(), ms, reason }).then(() => {
+            void act({ type: "edit", ms, reason }).then(() => {
               setSheet(undefined)
               notify("Recorded time edited")
             })
@@ -291,16 +293,27 @@ const initials = (name: string) =>
     .join("")
     .toUpperCase()
 
-/** Vibrates and beeps once when a running timer crosses into a higher signal. Never on reload or selection. */
-function useThresholdCues(itemId: string | undefined, signal: Signal, running: boolean, settings: AppData["settings"]) {
-  const last = useRef({ itemId, signal })
+/** Applies an action through the engine (which emits events), then persists it. */
+async function dispatchAndSave(meetingId: string, itemId: string, timer: Timer, input: ActionInput) {
+  const action = timer.dispatch(input)
+  if (action) await repo.records.append(meetingId, itemId, action)
+}
+
+/**
+ * Vibrates and beeps when the engine reports that a running timer moved up to
+ * a higher signal. Loading a stored timer (reload, selection) emits nothing.
+ */
+function useThresholdCues(timer: Timer | undefined, settings: AppData["settings"]) {
   useEffect(() => {
-    const previous = last.current
-    last.current = { itemId, signal }
-    if (previous.itemId !== itemId || !running || signalRank(signal) <= signalRank(previous.signal)) return
-    if (settings.vibration) navigator.vibrate?.([90, 50, 90])
-    if (settings.sound) playThresholdTone()
-  }, [itemId, signal, running, settings.vibration, settings.sound])
+    if (!timer) return
+    return timer.on(event => {
+      if (event.type !== "signalChanged" || timer.state().status !== "running" || signalRank(event.to) <= signalRank(event.from)) return
+      if (settings.vibration) navigator.vibrate?.([90, 50, 90])
+      if (settings.sound) playThresholdTone()
+    })
+  }, [timer, settings.vibration, settings.sound])
+  // Renders happen on whole seconds of elapsed time; let the engine evaluate each one.
+  useEffect(() => timer?.tick())
 }
 
 function GuestSheet({ data, close, added }: { data: AppData & { meeting: Meeting }; close: () => void; added: (id: string, started: boolean) => void }) {
@@ -315,7 +328,7 @@ function GuestSheet({ data, close, added }: { data: AppData & { meeting: Meeting
       personName,
       timing: profileFor("TableTopicsSpeaker", data.rules, data.settings.profileOverrides),
     })
-    if (start) await repo.records.append(data.meeting.id, item.id, { type: "start", at: clock() })
+    if (start) await dispatchAndSave(data.meeting.id, item.id, timerFor(item, data.rules.withinRule), { type: "start" })
     added(item.id, start)
   }
   return (
