@@ -31,15 +31,19 @@ src/engine/    pure logic: no React, no DOM, no storage. The clock is always inj
                portable timer with events (timer.ts), shared vector runner (vectors.test.ts)
   profiles.ts  timing profile library, club-rule resolution (resolveProfile), labels, m:ss helpers
   range.ts     profileFromRange: agenda time text → profile, or null with a reason
+  signal-output.ts  SignalOutput interface, change-only publisher, displayAt, fake device output
+  explain.ts   "Explain the signals" card built from the club rules
   report.ts    Timer's report rows
   audio.ts     threshold tone (the only browser-API module in engine/; it stays outside the timing core)
 src/storage/   db.ts (Dexie schema), repository.ts (the only code that touches IndexedDB),
                schema.ts (zod export format), export-import.ts, migrate-legacy.ts (v1 → v2, once)
 src/ui/        App.tsx (shell + hash routes), hooks.ts, components.tsx, runtime.ts (db, repo, clock),
-               timers.ts (one engine timer per agenda item), signals.tsx (label, icon, pattern per signal), screens/
+               timers.ts (one engine timer per agenda item), signals.tsx (label, icon, pattern per signal),
+               speaker-feed.ts + signal-channel.ts (publish to speaker windows), present.ts (windows, PNGs),
+               screens/ (incl. SpeakerView for #/speaker and #/zoom)
 test-vectors/  timing.json: shared timing scenarios, also run by the device firmware
 tests/e2e/     Playwright specs
-docs/          AUDIT.md, TIMING_SPEC.md (normative timing rules for app and firmware)
+docs/          AUDIT.md, TIMING_SPEC.md (normative timing rules for app and firmware), SIGNAL_OUTPUT.md
 ```
 
 ## Key design rules
@@ -58,6 +62,9 @@ docs/          AUDIT.md, TIMING_SPEC.md (normative timing rules for app and firm
   - `resolveProfile` turns a library entry plus the rules into the item's `TimingProfile`.
   - Rule changes are re-applied only to items not yet timed (`repo.meetings.applyClubRules`).
   - Recorded results keep the rules they were timed with.
+- **Anything that shows the signal to the speaker is a `SignalOutput`** ([docs/SIGNAL_OUTPUT.md](docs/SIGNAL_OUTPUT.md)).
+  - Outputs derive the clock locally and never freeze on a wrong colour.
+  - Names never reach an output in contest mode.
 - **`profileFromRange` never guesses.** Anything ambiguous returns `{ profile: null, reason }`.
 
 ## Commands

@@ -3,7 +3,7 @@ import { appendAction } from "../engine/timing"
 import { defaultRules, definitionOf, resolveProfile, rulesOf } from "../engine/profiles"
 import type { TommyDB } from "./db"
 
-export const defaultSettings: AppSettings = { sound: false, vibration: true, silent: false, signalPatterns: true, theme: "system" }
+export const defaultSettings: AppSettings = { sound: false, vibration: true, silent: false, speakerClock: false, signalPatterns: true, theme: "system" }
 
 export const segmentOrder: SegmentKind[] = ["opening", "prepared_speeches", "table_topics", "evaluations", "reports", "other"]
 

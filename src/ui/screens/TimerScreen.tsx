@@ -1,11 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
-import { Bell, BellOff, Check, ChevronRight, Maximize2, Minimize2, Pause, PencilLine, Play, RotateCcw, Square, Undo2, UserPlus } from "lucide-react"
+import { Bell, BellOff, Check, ChevronRight, Download, MonitorUp, Pause, PencilLine, Play, RotateCcw, Square, Undo2, UserPlus, Video } from "lucide-react"
 import type { AgendaItem, Meeting, Segment, SegmentKind, Signal, TimedRecord, TimeResult } from "../../domain"
 import { activityLabel, formatClock, parseClock, profileFor, rangeLabel, segmentLabels } from "../../engine/profiles"
 import { signalRank, stateOf, type ActionInput, type Timer, type TimerState } from "../../engine/timing"
 import { resultLabels } from "../../engine/report"
 import { playThresholdTone, unlockAudio } from "../../engine/audio"
-import { Sheet } from "../components"
+import { Sheet, Toggle } from "../components"
+import { canCast, castSpeakerView, downloadBackgrounds, openSpeakerWindow, openZoomWindow } from "../present"
 import { useSecondTicks, useWakeLock, type AppData } from "../hooks"
 import { repo } from "../runtime"
 import { SignalIcon, signalAnnouncement, signalPresentation } from "../signals"
@@ -23,9 +24,11 @@ type Props = {
   select: (id?: string) => void
   notify: (message: string) => void
   openMeeting: () => void
+  explaining: boolean
+  setExplaining: (on: boolean) => void
 }
 
-export function TimerScreen({ data, readOnly, selectedId, select, notify, openMeeting }: Props) {
+export function TimerScreen({ data, readOnly, selectedId, select, notify, openMeeting, explaining, setExplaining }: Props) {
   const { meeting, records, settings, rules } = data
   const recordFor = useMemo(() => new Map(records.map(record => [record.agendaItemId, record])), [records])
   const statusOf = (item: AgendaItem) => timerStateOf(recordFor.get(item.id)).status
@@ -50,10 +53,9 @@ export function TimerScreen({ data, readOnly, selectedId, select, notify, openMe
   const signal: Signal = timer ? timer.signal(now) : "none"
   const presentation = signalPresentation[signal]
 
-  const [sheet, setSheet] = useState<"guest" | "edit">()
-  const [display, setDisplay] = useState(false)
+  const [sheet, setSheet] = useState<"guest" | "edit" | "present">()
   const announcement = useSignalEvents(timer, settings)
-  useWakeLock(meeting.status === "live" || !!runningSegment || display)
+  useWakeLock(meeting.status === "live" || !!runningSegment)
 
   const act = async (input: ActionInput) => {
     if (!item || !timer || readOnly) return
@@ -81,7 +83,7 @@ export function TimerScreen({ data, readOnly, selectedId, select, notify, openMe
   const offset = (seconds: number) => void act({ type: "offset", ms: seconds * 1000 })
   const undo = () => void act({ type: "undo" })
 
-  useKeyboardShortcuts(!sheet && !display && !readOnly && !!item, {
+  useKeyboardShortcuts(!sheet && !readOnly && !!item, {
     " ": primary,
     n: () => status !== "running" && status !== "paused" && goNext(),
     u: () => timer?.canUndo() && undo(),
@@ -89,8 +91,6 @@ export function TimerScreen({ data, readOnly, selectedId, select, notify, openMe
     "2": () => status !== "idle" && offset(10),
     "3": () => status !== "idle" && offset(30),
   })
-
-  if (display) return <SpeakerDisplay elapsed={elapsed} signal={signal} exit={() => setDisplay(false)} />
 
   const stopped = status === "stopped"
   const result: TimeResult | undefined = stopped && timer ? timer.result(now) : undefined
@@ -149,8 +149,8 @@ export function TimerScreen({ data, readOnly, selectedId, select, notify, openMe
             {status === "paused" ? "Paused" : presentation.hint}
           </p>
         )}
-        <button className="ts-display-button" onClick={() => setDisplay(true)} aria-label="Open speaker display">
-          <Maximize2 size={20} aria-hidden="true" />
+        <button className="ts-display-button" onClick={() => setSheet("present")} aria-label="Present to the speaker">
+          <MonitorUp size={20} aria-hidden="true" />
         </button>
       </div>
       <p className="visually-hidden" role="status" aria-live="assertive" aria-atomic="true">
@@ -219,6 +219,15 @@ export function TimerScreen({ data, readOnly, selectedId, select, notify, openMe
             setSheet(undefined)
             notify(started ? "Guest added and timing started" : "Guest added to Table Topics")
           }}
+        />
+      )}
+      {sheet === "present" && (
+        <PresentSheet
+          close={() => setSheet(undefined)}
+          notify={notify}
+          explaining={explaining}
+          setExplaining={setExplaining}
+          showClock={settings.speakerClock}
         />
       )}
       {sheet === "edit" && item && (
@@ -359,15 +368,59 @@ function EditSheet({ elapsed, close, save }: { elapsed: number; close: () => voi
   )
 }
 
-/** Temporary full-screen view; phase 5 replaces it with the synced speaker display. */
-function SpeakerDisplay({ elapsed, signal, exit }: { elapsed: number; signal: Signal; exit: () => void }) {
+/** Everything for showing the signal to the speaker: second screen, video calls, the explanation card. */
+function PresentSheet({
+  close,
+  notify,
+  explaining,
+  setExplaining,
+  showClock,
+}: {
+  close: () => void
+  notify: (message: string) => void
+  explaining: boolean
+  setExplaining: (on: boolean) => void
+  showClock: boolean
+}) {
+  const [help, setHelp] = useState("")
+  const present = async () => {
+    const result = await openSpeakerWindow()
+    if (result === "blocked") return setHelp("The browser blocked the new window. Allow pop-ups for Tommy, then try again.")
+    if (result === "second-screen") return notify("Speaker view opened on the other screen")
+    setHelp("Drag the speaker window to the projector or second screen, then press Full screen in that window.")
+  }
   return (
-    <button className={`speaker-display signal-${signal}`} onClick={exit} aria-label="Exit speaker display">
-      <span>{formatClock(elapsed)}</span>
-      <small>
-        <SignalIcon signal={signal} size={22} /> {signalPresentation[signal].label} · Tap to exit
-      </small>
-      <Minimize2 aria-hidden="true" />
-    </button>
+    <Sheet title="Present to the speaker" eyebrow="Speaker view" onClose={close}>
+      <div className="present-actions">
+        <button className="primary-button" onClick={() => void present()}>
+          <MonitorUp aria-hidden="true" />
+          Open speaker view
+        </button>
+        {canCast() && (
+          <button className="secondary-button" onClick={() => void castSpeakerView().catch(() => setHelp("No display was chosen."))}>
+            <MonitorUp aria-hidden="true" />
+            Cast to a display
+          </button>
+        )}
+        <button
+          className="secondary-button"
+          onClick={() => (openZoomWindow() ? notify("Share the Zoom view window in your call") : setHelp("Allow pop-ups for Tommy, then try again."))}
+        >
+          <Video aria-hidden="true" />
+          Zoom or Teams view (16:9)
+        </button>
+        <button className="secondary-button" onClick={() => void downloadBackgrounds().then(() => notify("Backgrounds downloaded"))}>
+          <Download aria-hidden="true" />
+          Download backgrounds (PNG)
+        </button>
+      </div>
+      {help && (
+        <p className="present-help" role="status">
+          {help}
+        </p>
+      )}
+      <Toggle label="Show 'Explain the signals' on the speaker view" value={explaining} onChange={setExplaining} />
+      <Toggle label="Show the clock to the speaker" value={showClock} onChange={value => void repo.settings.update({ speakerClock: value })} />
+    </Sheet>
   )
 }

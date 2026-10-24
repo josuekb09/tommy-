@@ -156,6 +156,7 @@ export function SettingsScreen({ data, readOnly, notify }: Props) {
         <Toggle label="Threshold sound" value={settings.sound} onChange={value => void repo.settings.update({ sound: value })} />
         <Toggle label="Vibration" value={settings.vibration} onChange={value => void repo.settings.update({ vibration: value })} />
         <Toggle label="Pattern cues next to colours" value={settings.signalPatterns} onChange={value => void repo.settings.update({ signalPatterns: value })} />
+        <Toggle label="Show the clock to the speaker" value={settings.speakerClock} onChange={value => void repo.settings.update({ speakerClock: value })} />
       </section>
 
       <section className="settings-card">

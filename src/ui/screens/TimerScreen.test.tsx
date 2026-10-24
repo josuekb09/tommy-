@@ -33,6 +33,8 @@ function Harness() {
       select={setSelected}
       notify={() => undefined}
       openMeeting={() => undefined}
+      explaining={false}
+      setExplaining={() => undefined}
     />
   )
 }

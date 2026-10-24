@@ -8,6 +8,8 @@ export type AppSettings = {
   vibration: boolean
   /** Quick mute on the Timer screen: no sound or vibration, preferences kept. */
   silent: boolean
+  /** Show the elapsed time on the speaker view; many clubs show only the colour. */
+  speakerClock: boolean
   /** Show the pattern/icon cue next to every signal. */
   signalPatterns: boolean
   theme: Theme

@@ -1060,45 +1060,6 @@ button:disabled {
   height: 48px;
   font-size: 16px;
 }
-.speaker-display {
-  position: fixed;
-  z-index: 20;
-  inset: 0;
-  width: 100vw;
-  height: 100dvh;
-  border: 0;
-  color: #fff;
-  background: #172033;
-  display: grid;
-  place-items: center;
-  align-content: center;
-  gap: 20px;
-  font-family: "Inter", sans-serif;
-}
-.speaker-display.state-green {
-  background: #167a4a;
-}
-.speaker-display.state-amber {
-  background: #a87800;
-}
-.speaker-display.state-red,
-.speaker-display.state-disqualified {
-  background: #b62d39;
-}
-.speaker-display > span {
-  font:
-    700 clamp(100px, 26vw, 520px)/1 "JetBrains Mono",
-    monospace;
-  letter-spacing: -0.08em;
-}
-.speaker-display small {
-  font-size: clamp(18px, 3vw, 32px);
-}
-.speaker-display svg {
-  position: absolute;
-  top: 24px;
-  right: 24px;
-}
 button:focus-visible,
 input:focus-visible,
 select:focus-visible {
@@ -1545,7 +1506,7 @@ select:focus-visible {
 }
 /* Each signal: its own colour AND its own pattern AND (in markup) its own icon and word. */
 .ts-stage.signal-green,
-.speaker-display.signal-green {
+.sv-stage.signal-green {
   background-color: var(--sig-green-bg);
   color: var(--sig-green-fg);
   border-color: transparent;
@@ -1553,21 +1514,21 @@ select:focus-visible {
   background-size: 18px 18px;
 }
 .ts-stage.signal-amber,
-.speaker-display.signal-amber {
+.sv-stage.signal-amber {
   background-color: var(--sig-amber-bg);
   color: var(--sig-amber-fg);
   border-color: transparent;
   background-image: repeating-linear-gradient(45deg, rgb(0 0 0 / 0.09) 0 10px, transparent 10px 22px);
 }
 .ts-stage.signal-red,
-.speaker-display.signal-red {
+.sv-stage.signal-red {
   background-color: var(--sig-red-bg);
   color: var(--sig-red-fg);
   border-color: transparent;
   background-image: repeating-linear-gradient(0deg, rgb(255 255 255 / 0.1) 0 6px, transparent 6px 16px);
 }
 .ts-stage.signal-overtime,
-.speaker-display.signal-overtime {
+.sv-stage.signal-overtime {
   background-color: var(--sig-over-bg);
   color: var(--sig-over-fg);
   border-color: transparent;
@@ -1577,7 +1538,7 @@ select:focus-visible {
   animation: ts-overtime-flash 1s steps(2, jump-none) infinite;
 }
 .ts-stage.signal-disqualified,
-.speaker-display.signal-disqualified {
+.sv-stage.signal-disqualified {
   background-color: var(--sig-dq-bg);
   color: var(--sig-dq-fg);
   border-color: transparent;
@@ -1708,14 +1669,6 @@ html[data-theme="dark"] .ts-primary-paused {
 html[data-theme="dark"] .ts-screen :focus-visible {
   outline-color: #8fb8ff;
 }
-.speaker-display.signal-none {
-  background: #172033;
-}
-.speaker-display small {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
 @media (min-width: 640px) {
   .ts-screen {
     min-height: calc(100dvh - 56px - 64px);
@@ -1724,7 +1677,8 @@ html[data-theme="dark"] .ts-screen :focus-visible {
 }
 @media (prefers-reduced-motion: reduce) {
   .ts-stage,
-  .speaker-display {
+  .sv-stage,
+  .sv-flash {
     transition: none;
     animation: none !important;
   }
@@ -1776,4 +1730,192 @@ html[data-theme="dark"] .ts-screen :focus-visible {
 }
 html[data-theme="dark"] .range-error {
   color: #ff8a95;
+}
+
+/* ---------- Speaker view and Zoom view (phase 5) ---------- */
+.sv-root {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #000;
+  font-family: "Inter", sans-serif;
+}
+.sv-stage {
+  position: relative;
+  overflow: hidden;
+  width: 100vw;
+  height: 100dvh;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: clamp(12px, 3vh, 40px);
+  text-align: center;
+  background-color: #172033;
+  color: #ffffff;
+}
+/* Zoom and Teams: always a 16:9 frame, as large as the window allows. */
+.sv-zoom .sv-stage {
+  width: min(100vw, calc(100dvh * 16 / 9));
+  height: auto;
+  aspect-ratio: 16 / 9;
+}
+.sv-signal {
+  display: grid;
+  justify-items: center;
+  gap: 2vh;
+}
+.sv-speaker .sv-signal svg {
+  width: clamp(80px, 22vmin, 260px);
+  height: auto;
+}
+.sv-zoom .sv-signal svg {
+  width: 20%;
+  height: auto;
+}
+.sv-word {
+  font-size: clamp(56px, 14vmin, 220px);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1;
+}
+.sv-zoom .sv-word {
+  font-size: min(10vw, 17.8dvh);
+}
+.sv-clock {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: clamp(40px, 10vmin, 160px);
+}
+.sv-who {
+  margin: 0;
+  max-width: 90vw;
+  font-size: clamp(16px, 3vmin, 32px);
+  font-weight: 600;
+  opacity: 0.9;
+}
+/* A short flash each time the signal changes. */
+.sv-flash {
+  position: absolute;
+  inset: 0;
+  background: #ffffff;
+  opacity: 0;
+  pointer-events: none;
+  animation: sv-flash 0.7s ease-out;
+}
+@keyframes sv-flash {
+  0% {
+    opacity: 0.55;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.sv-badge {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #14213d;
+  font-weight: 700;
+  box-shadow: 0 2px 12px rgb(0 0 0 / 0.35);
+}
+.sv-fullscreen {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 14px;
+  background: rgb(255 255 255 / 0.9);
+  color: #14213d;
+  font-weight: 700;
+}
+.sv-explain {
+  align-content: center;
+  gap: 24px;
+  padding: 4vh 6vw;
+  background: #f6f7fa;
+  color: #14213d;
+  overflow: auto;
+}
+.sv-explain h1 {
+  margin: 0;
+  font-size: clamp(28px, 5vmin, 56px);
+}
+.sv-explain ul,
+.sv-explain dl {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 12px;
+  width: min(1100px, 100%);
+}
+.sv-explain-signals li {
+  display: grid;
+  grid-template-columns: auto 10ch 1fr;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 18px;
+  border-radius: 16px;
+  font-size: clamp(16px, 2.6vmin, 28px);
+}
+.sv-explain-signals li.signal-green {
+  background: var(--sig-green-bg);
+  color: var(--sig-green-fg);
+}
+.sv-explain-signals li.signal-amber {
+  background: var(--sig-amber-bg);
+  color: var(--sig-amber-fg);
+}
+.sv-explain-signals li.signal-red {
+  background: var(--sig-red-bg);
+  color: var(--sig-red-fg);
+}
+.sv-explain-signals li.signal-overtime {
+  background: var(--sig-over-bg);
+  color: var(--sig-over-fg);
+}
+.sv-explain-signals li.signal-disqualified {
+  background: var(--sig-dq-bg);
+  color: var(--sig-dq-fg);
+}
+.sv-explain-rules li,
+.sv-explain-examples div {
+  font-size: clamp(16px, 2.4vmin, 26px);
+}
+.sv-explain-examples div {
+  display: flex;
+  gap: 12px;
+}
+.sv-explain-examples dt {
+  font-weight: 700;
+}
+.sv-explain-examples dd {
+  margin: 0;
+}
+.present-actions {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.present-actions button {
+  min-height: 52px;
+}
+.present-help {
+  margin: 0 0 12px;
+  font-weight: 600;
 }

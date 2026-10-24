@@ -97,6 +97,7 @@ const settings = z.object({
   sound: z.boolean(),
   vibration: z.boolean(),
   silent: z.boolean().default(false),
+  speakerClock: z.boolean().default(false),
   signalPatterns: z.boolean(),
   theme: z.enum(["system", "light", "dark"]),
   currentMeetingId: z.string().optional(),
