@@ -1,7 +1,7 @@
 import { useId, useMemo, useState } from "react"
-import { Trash2, UserPlus } from "lucide-react"
+import { PencilLine, Trash2, UserPlus } from "lucide-react"
 import type { Guest, Member } from "../domain"
-import { matchPeople, type Person } from "../engine/people"
+import { matchPeople, parseAliases, type Person } from "../engine/people"
 import { repo } from "./runtime"
 
 /** What a person field holds: a name, and who it is once the Timer picked someone. */
@@ -102,6 +102,7 @@ export function PersonField({
 /** The club's member list. Adding a name like an existing one asks first and never merges. */
 export function MembersCard({ members, readOnly, notify }: { members: Member[]; readOnly: boolean; notify: (message: string) => void }) {
   const [name, setName] = useState("")
+  const [editing, setEditing] = useState<string>()
   const people = useMemo(() => peopleOf(members, []), [members])
   const similar = matchPeople(name, people)
   const add = async () => {
@@ -133,16 +134,60 @@ export function MembersCard({ members, readOnly, notify }: { members: Member[]; 
       </button>
       {members.length > 0 && (
         <ul className="member-list">
-          {members.map(member => (
-            <li key={member.id}>
-              <span>{member.name}</span>
-              <button className="row-delete" aria-label={`Remove ${member.name}`} onClick={() => void remove(member)} disabled={readOnly}>
-                <Trash2 size={16} aria-hidden="true" />
-              </button>
-            </li>
-          ))}
+          {members.map(member =>
+            editing === member.id ? (
+              <li key={member.id}>
+                <MemberEditor member={member} done={() => setEditing(undefined)} notify={notify} />
+              </li>
+            ) : (
+              <li key={member.id}>
+                <span className="member-name">
+                  {member.name}
+                  {member.aliases.length > 0 && <small>Also: {member.aliases.join(", ")}</small>}
+                </span>
+                <button className="row-delete" aria-label={`Edit ${member.name}`} onClick={() => setEditing(member.id)} disabled={readOnly}>
+                  <PencilLine size={16} aria-hidden="true" />
+                </button>
+                <button className="row-delete" aria-label={`Remove ${member.name}`} onClick={() => void remove(member)} disabled={readOnly}>
+                  <Trash2 size={16} aria-hidden="true" />
+                </button>
+              </li>
+            ),
+          )}
         </ul>
       )}
     </section>
+  )
+}
+
+/** Rename a member and list other spellings (from agendas, nicknames) that should find them. */
+function MemberEditor({ member, done, notify }: { member: Member; done: () => void; notify: (message: string) => void }) {
+  const [name, setName] = useState(member.name)
+  const [aliases, setAliases] = useState(member.aliases.join(", "))
+  const save = async () => {
+    await repo.members.put({ ...member, name: name.trim(), aliases: parseAliases(aliases, name) })
+    notify(`${name.trim()} saved`)
+    done()
+  }
+  return (
+    <div className="member-editor" role="group" aria-label={`Edit ${member.name}`}>
+      <label className="field-label">
+        Name
+        <input value={name} onChange={event => setName(event.target.value)} autoComplete="off" />
+      </label>
+      <label className="field-label">
+        Other spellings
+        <input value={aliases} onChange={event => setAliases(event.target.value)} placeholder="e.g. Kubaya, Josue" autoComplete="off" />
+        <small>Separate with commas. Agendas and searches with these spellings find {name.trim() || "this member"}.</small>
+      </label>
+      <div className="sheet-actions">
+        <button className="secondary-button" onClick={done}>
+          Cancel
+        </button>
+        <button className="primary-button" onClick={() => void save()} disabled={!name.trim()}>
+          Save
+        </button>
+      </div>
+    </div>
   )
 }

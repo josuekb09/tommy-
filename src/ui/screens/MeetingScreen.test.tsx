@@ -124,6 +124,14 @@ describe("Meeting screen", () => {
     await waitFor(async () => expect((await repo.meetings.current()).segments.map(s => s.kind).slice(2, 4)).toEqual(["evaluations", "table_topics"]))
   })
 
+  it("duplicates the last item of a section as an empty slot", async () => {
+    await addSpeaker("Ada")
+    await user.click(screen.getByRole("button", { name: "Add another speaker" }))
+    await waitFor(() => expect(rowNames("Prepared speeches")).toEqual(["Ada", "Speaker"]))
+    const [, copy] = (await repo.meetings.current()).segments[1].items
+    expect([copy.personName, copy.role, copy.profileId]).toEqual(["", "Speaker", "speech"])
+  })
+
   it("adds a Table Topics participant with one tap, marked as a guest", async () => {
     await user.click(screen.getByRole("button", { name: "Add participant" }))
     await user.click(screen.getByRole("button", { name: "Add participant" }))

@@ -7,6 +7,7 @@ import {
   CalendarPlus,
   ChevronDown,
   ChevronUp,
+  Copy,
   GripVertical,
   PencilLine,
   Play,
@@ -15,7 +16,7 @@ import {
   UserPlus,
 } from "lucide-react"
 import type { AgendaItem, AgendaRole, Meeting, Segment, SegmentKind, Template } from "../../domain"
-import { agendaWarnings, evaluatingLabel, nextGuestName, nextInOrder, orderedItems, personLabel, sortedItems } from "../../engine/agenda"
+import { agendaWarnings, duplicateLast, evaluatingLabel, nextGuestName, nextInOrder, orderedItems, personLabel, sortedItems } from "../../engine/agenda"
 import { defaultProfileIdForRole, formatClock, profileFor, rangeLabel, roleLabels, segmentLabels } from "../../engine/profiles"
 import { builtInTemplates } from "../../engine/templates"
 import { stateOf } from "../../engine/timing"
@@ -192,6 +193,14 @@ function SegmentSection({
   const label = segmentLabels[segment.kind]
   const list = useRef<HTMLOListElement>(null)
   const move = (itemId: string, toIndex: number) => void repo.meetings.moveItem(meeting.id, itemId, toIndex)
+  const lastItem = items.at(-1)
+  /** Another slot like the last one; a brief goes just before the speech it is paired with. */
+  const duplicate = async () => {
+    const copy = duplicateLast(meeting, segment.id)
+    if (!copy) return
+    await repo.meetings.addItem(meeting.id, segment.kind, copy, { before: copy.role === "EvaluatorBrief" ? copy.evaluatesItemId : undefined })
+    notify(`Another ${roleLabels[copy.role].toLowerCase()} added`)
+  }
   const drag = useDragToReorder(list, move, readOnly)
   return (
     <section className="queue-section current" aria-labelledby={`segment-${segment.id}`}>
@@ -260,6 +269,12 @@ function SegmentSection({
           )
         })}
       </ol>
+      {lastItem && lastItem.role !== "TableTopicsSpeaker" && (
+        <button className="text-button duplicate-last" onClick={() => void duplicate()} disabled={readOnly}>
+          <Copy size={16} aria-hidden="true" />
+          Add another {roleLabels[lastItem.role].toLowerCase()}
+        </button>
+      )}
       {!items.length && <p className="empty-queue">{segment.kind === "table_topics" ? "Add participants as they are called up." : "No one yet."}</p>}
     </section>
   )

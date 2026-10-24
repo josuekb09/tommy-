@@ -84,3 +84,17 @@ export function matchPeople(query: string, people: Person[], limit = 5): PersonM
     .sort((a, b) => Number(b.sameName) - Number(a.sameName) || a.cost - b.cost || a.person.name.localeCompare(b.person.name))
     .slice(0, limit)
 }
+
+/** "Kubaya, Kambuya; Josue" → other spellings of a name: trimmed, without repeats or the name itself. */
+export function parseAliases(text: string, name: string): string[] {
+  const seen = new Set([normalizeName(name)])
+  return text
+    .split(/[,;\n]/)
+    .map(alias => alias.trim().replace(/\s+/g, " "))
+    .filter(alias => {
+      const key = normalizeName(alias)
+      if (!key || seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+}

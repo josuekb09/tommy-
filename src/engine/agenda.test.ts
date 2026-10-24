@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { AgendaItem, AgendaRole, Meeting, SegmentKind } from "../domain"
-import { agendaWarnings, evaluatingLabel, insertItem, moveItem, moveSegment, nextInOrder, orderedItems, personLabel } from "./agenda"
+import { agendaWarnings, duplicateLast, evaluatingLabel, insertItem, moveItem, moveSegment, nextInOrder, orderedItems, personLabel, queueOf } from "./agenda"
 import { defaultRules, profileFor } from "./profiles"
 
 const item = (id: string, role: AgendaRole, personName: string, extra: Partial<AgendaItem> = {}): AgendaItem => ({
@@ -111,5 +111,52 @@ describe("evaluator pairing", () => {
       "No evaluator for Ben.",
       "The brief before Cy's speech is by Zed, but Hal evaluates it.",
     ])
+  })
+})
+
+describe("duplicate the last item", () => {
+  const m = meeting(
+    ["prepared_speeches", [item("s1", "Speaker", "Ada"), item("s2", "Speaker", "Ben", { speechTitle: "Bridges", profileId: "speech_8_10", personId: "p" })]],
+    ["evaluations", [item("e1", "Evaluator", "Eva", { evaluatesItemId: "s1", profileId: "evaluation" })]],
+    ["reports", []],
+  )
+
+  it("copies the role, profile and timing, never the person or title", () => {
+    expect(duplicateLast(m, "prepared_speeches")).toEqual({ role: "Speaker", personName: "", profileId: "speech_8_10", timing: m.segments[0].items[1].timing })
+  })
+
+  it("pairs a copied evaluator with the next speech that has no evaluator", () => {
+    expect(duplicateLast(m, "evaluations")?.evaluatesItemId).toBe("s2")
+    const full = meeting(
+      ...m.segments.map(
+        s => [s.kind, s.id === "evaluations" ? [...s.items, item("e2", "Evaluator", "Ed", { evaluatesItemId: "s2" })] : s.items] as [SegmentKind, AgendaItem[]],
+      ),
+    )
+    expect(duplicateLast(full, "evaluations")?.evaluatesItemId).toBeUndefined()
+  })
+
+  it("has nothing to copy in an empty segment", () => {
+    expect(duplicateLast(m, "reports")).toBeUndefined()
+  })
+})
+
+describe("queue", () => {
+  const m = meeting(
+    ["prepared_speeches", [item("s1", "Speaker", "Ada"), item("s2", "Speaker", "Ben")]],
+    ["table_topics", [item("t1", "TableTopicsSpeaker", "Gia")]],
+    ["evaluations", [item("e1", "Evaluator", "Eva")]],
+  )
+  const done = (ids: string[]) => (i: AgendaItem) => ids.includes(i.id)
+  const ids = (items: AgendaItem[]) => items.map(i => i.id)
+
+  it("splits the meeting into done, on now and still to come, in agenda order", () => {
+    const queue = queueOf(m, "t1", done(["s1", "s2"]))
+    expect([ids(queue.done), queue.current?.id, ids(queue.upcoming)]).toEqual([["s1", "s2"], "t1", ["e1"]])
+  })
+
+  it("keeps a skipped person in the upcoming list", () => {
+    const queue = queueOf(m, "e1", done(["s1", "t1"]))
+    expect([ids(queue.done), ids(queue.upcoming)]).toEqual([["s1", "t1"], ["s2"]])
+    expect(queueOf(m, undefined, done([])).current).toBeUndefined()
   })
 })

@@ -110,3 +110,35 @@ export function nextGuestName(meeting: Meeting) {
   const count = meeting.segments.flatMap(segment => segment.items).filter(item => item.role === "TableTopicsSpeaker").length
   return `Guest ${count + 1}`
 }
+
+/**
+ * A new, empty slot like the last item of a segment: same role, profile and
+ * timing, no person or title. An evaluator or brief is paired with the next
+ * speech that has no one in that role yet.
+ */
+export function duplicateLast(meeting: Meeting, segmentId: string): Omit<AgendaItem, "id" | "order"> | undefined {
+  const segment = meeting.segments.find(s => s.id === segmentId)
+  const last = segment && sortedItems(segment).at(-1)
+  if (!last) return undefined
+  const items = orderedItems(meeting)
+  const free = evaluates(last)
+    ? items.find(item => item.role === "Speaker" && !items.some(other => other.role === last.role && other.evaluatesItemId === item.id))
+    : undefined
+  return {
+    role: last.role,
+    personName: "",
+    ...(last.profileId && { profileId: last.profileId }),
+    ...(free && { evaluatesItemId: free.id }),
+    timing: last.timing,
+  }
+}
+
+export type Queue = { done: AgendaItem[]; current?: AgendaItem; upcoming: AgendaItem[] }
+
+/** The meeting as the Timer sees it: who is done, who is on now and who is still to come, in agenda order. */
+export function queueOf(meeting: Meeting, currentId: string | undefined, isDone: (item: AgendaItem) => boolean): Queue {
+  const items = orderedItems(meeting)
+  const current = items.find(item => item.id === currentId)
+  const others = items.filter(item => item !== current)
+  return { done: others.filter(isDone), current, upcoming: others.filter(item => !isDone(item)) }
+}

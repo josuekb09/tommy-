@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { editDistance, matchPeople, normalizeName, type Person } from "./people"
+import { editDistance, matchPeople, normalizeName, parseAliases, type Person } from "./people"
 
 const people: Person[] = [
   { id: "1", name: "Josué Kabuya", kind: "member" },
@@ -46,5 +46,16 @@ describe("lenient name matching", () => {
     expect(suggest("Ada Kabuya")).toEqual([])
     expect(suggest("Zebedee")).toEqual([])
     expect(suggest("")).toEqual([])
+  })
+})
+
+describe("other spellings", () => {
+  it("splits on commas, semicolons and new lines, and drops blanks, repeats and the name itself", () => {
+    expect(parseAliases(" Kubaya, kubaya ;Josue\n\n  Kambuya  wa ,Josué Kabuya", "Josué Kabuya")).toEqual(["Kubaya", "Josue", "Kambuya wa"])
+  })
+
+  it("lets an alias find the member", () => {
+    const person: Person = { id: "1", name: "Josué Kabuya", aliases: parseAliases("JK", "Josué Kabuya"), kind: "member" }
+    expect(matchPeople("JK", [person]).map(match => match.person.name)).toEqual(["Josué Kabuya"])
   })
 })

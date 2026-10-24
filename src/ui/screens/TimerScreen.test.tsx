@@ -147,6 +147,27 @@ describe("Timer screen", () => {
     expect(document.querySelector(".ts-next")?.textContent).toBe("Next: Gia · Table Topics")
   })
 
+  it("shows the queue (done with times, on now, up next) and jumps to anyone tapped", async () => {
+    await setup()
+    await user.click(screen.getByRole("button", { name: "Start" }))
+    await screen.findByRole("button", { name: "Stop" })
+    await advance(372_000)
+    await user.click(screen.getByRole("button", { name: "Stop" }))
+    await user.click(await screen.findByRole("button", { name: "Next speaker" }))
+    await screen.findByRole("heading", { name: "Ben Okafor" })
+
+    await user.click(screen.getByRole("button", { name: "Queue" }))
+    const sheet = screen.getByRole("dialog", { name: "Meeting queue" })
+    expect(within(within(sheet).getByRole("region", { name: "On now" })).getByRole("button").textContent).toMatch(/^Ben Okafor/)
+    expect(within(within(sheet).getByRole("region", { name: "Done" })).getByRole("button").textContent).toBe(
+      "Ada LovelaceSpeaker · Prepared speeches · 6:12 · Within time",
+    )
+    expect(within(sheet).getByRole("region", { name: "Up next" }).textContent).toContain("No one.")
+    await user.click(within(sheet).getByRole("button", { name: /^Ada Lovelace/ }))
+    expect(await screen.findByRole("heading", { name: "Ada Lovelace" })).toBeTruthy()
+    expect(screen.queryByRole("dialog")).toBeNull()
+  })
+
   it("supports keyboard shortcuts: Space, 1/2/3, U and N", async () => {
     await setup()
     await user.keyboard(" ")

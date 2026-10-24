@@ -1,9 +1,25 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
-import { Bell, BellOff, Check, ChevronRight, Download, MonitorUp, Pause, PencilLine, Play, RotateCcw, Square, Undo2, UserPlus, Video } from "lucide-react"
+import {
+  Bell,
+  BellOff,
+  Check,
+  ChevronRight,
+  Download,
+  ListOrdered,
+  MonitorUp,
+  Pause,
+  PencilLine,
+  Play,
+  RotateCcw,
+  Square,
+  Undo2,
+  UserPlus,
+  Video,
+} from "lucide-react"
 import type { AgendaItem, Meeting, SegmentKind, Signal, TimedRecord, TimeResult } from "../../domain"
-import { evaluatingLabel, nextGuestName, nextInOrder, personLabel, sortedItems } from "../../engine/agenda"
-import { activityLabel, formatClock, parseClock, profileFor, rangeLabel, segmentLabels } from "../../engine/profiles"
-import { signalRank, stateOf, type ActionInput, type Timer, type TimerState } from "../../engine/timing"
+import { evaluatingLabel, nextGuestName, nextInOrder, personLabel, queueOf, sortedItems } from "../../engine/agenda"
+import { activityLabel, formatClock, parseClock, profileFor, rangeLabel, roleLabels, segmentLabels } from "../../engine/profiles"
+import { resultFor, signalRank, stateOf, type ActionInput, type Timer, type TimerState } from "../../engine/timing"
 import { resultLabels } from "../../engine/report"
 import { playThresholdTone, unlockAudio } from "../../engine/audio"
 import { Sheet, Toggle } from "../components"
@@ -55,7 +71,7 @@ export function TimerScreen({ data, readOnly, selectedId, select, notify, openMe
   const signal: Signal = timer ? timer.signal(now) : "none"
   const presentation = signalPresentation[signal]
 
-  const [sheet, setSheet] = useState<"guest" | "edit" | "present">()
+  const [sheet, setSheet] = useState<"guest" | "edit" | "present" | "queue">()
   const announcement = useSignalEvents(timer, settings)
   useWakeLock(meeting.status === "live" || !!runningSegment)
 
@@ -134,10 +150,16 @@ export function TimerScreen({ data, readOnly, selectedId, select, notify, openMe
             Add people on the Meeting screen
           </button>
         )}
-        <p className="ts-next">
-          Next: <b>{next ? personLabel(next) : "no one"}</b>
-          {nextSegment && nextSegment.id !== segment.id && <> · {segmentLabels[nextSegment.kind]}</>}
-        </p>
+        <div className="ts-next-row">
+          <p className="ts-next">
+            Next: <b>{next ? personLabel(next) : "no one"}</b>
+            {nextSegment && nextSegment.id !== segment.id && <> · {segmentLabels[nextSegment.kind]}</>}
+          </p>
+          <button className="text-button ts-queue" onClick={() => setSheet("queue")}>
+            <ListOrdered size={16} aria-hidden="true" />
+            Queue
+          </button>
+        </div>
       </header>
 
       <div className={`ts-stage signal-${signal}`} role="timer" aria-label={`${formatClock(elapsed)} elapsed. Signal ${presentation.label.toLowerCase()}.`}>
@@ -221,6 +243,18 @@ export function TimerScreen({ data, readOnly, selectedId, select, notify, openMe
         </button>
       </div>
 
+      {sheet === "queue" && (
+        <QueueSheet
+          data={data}
+          currentId={item?.id}
+          close={() => setSheet(undefined)}
+          choose={id => {
+            setSegmentId(undefined)
+            select(id)
+            setSheet(undefined)
+          }}
+        />
+      )}
       {sheet === "guest" && (
         <GuestSheet
           data={data}
@@ -313,6 +347,66 @@ function useKeyboardShortcuts(enabled: boolean, handlers: Record<string, () => u
     return () => document.removeEventListener("keydown", onKey)
   }, [enabled])
 }
+
+/** Done (with times), on now and still to come, in agenda order. Tap anyone to jump to them. */
+function QueueSheet({
+  data,
+  currentId,
+  close,
+  choose,
+}: {
+  data: AppData & { meeting: Meeting }
+  currentId?: string
+  close: () => void
+  choose: (id: string) => void
+}) {
+  const { meeting, records, rules } = data
+  const recordOf = (item: AgendaItem) => records.find(record => record.agendaItemId === item.id)
+  const statusOf = (item: AgendaItem) => timerStateOf(recordOf(item)).status
+  const segmentOf = (item: AgendaItem) => meeting.segments.find(segment => segment.items.some(i => i.id === item.id))!.kind
+  const queue = queueOf(meeting, currentId, item => statusOf(item) === "stopped")
+  const detail = (item: AgendaItem) => {
+    const record = recordOf(item)
+    const status = statusOf(item)
+    if (status === "stopped" && record) return `${formatClock(record.elapsedMs)} · ${resultLabels[resultFor(record.elapsedMs, item.timing, rules.withinRule)]}`
+    if (status === "running" || status === "paused") return status === "running" ? "Timing now" : "Paused"
+    return rangeLabel(item.timing)
+  }
+  const groups: [string, AgendaItem[]][] = [
+    ["On now", queue.current ? [queue.current] : []],
+    ["Up next", queue.upcoming],
+    ["Done", queue.done],
+  ]
+  return (
+    <Sheet title="Meeting queue" eyebrow="Timer" onClose={close}>
+      {groups.map(([title, items]) => (
+        <section className="queue-group" key={title} aria-label={title}>
+          <h3>
+            {title} <small>{items.length}</small>
+          </h3>
+          {items.length ? (
+            <ul>
+              {items.map(item => (
+                <li key={item.id}>
+                  <button className={`queue-item ${statusOf(item)}`} onClick={() => choose(item.id)} aria-current={item.id === currentId ? "true" : undefined}>
+                    <b>{personLabel(item)}</b>
+                    <small>
+                      {roleLabelsFor(item)} · {segmentLabels[segmentOf(item)]} · {detail(item)}
+                    </small>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="empty-queue">{title === "Done" ? "No one timed yet." : "No one."}</p>
+          )}
+        </section>
+      ))}
+    </Sheet>
+  )
+}
+
+const roleLabelsFor = (item: AgendaItem) => (item.guest ? `${roleLabels[item.role]}, guest` : roleLabels[item.role])
 
 function GuestSheet({ data, close, added }: { data: AppData & { meeting: Meeting }; close: () => void; added: (id: string, started: boolean) => void }) {
   const placeholder = nextGuestName(data.meeting)
