@@ -3,6 +3,7 @@ import {
   Bell,
   BellOff,
   Check,
+  ChevronLeft,
   ChevronRight,
   Download,
   ListOrdered,
@@ -17,7 +18,17 @@ import {
   Video,
 } from "lucide-react"
 import { isTimed, type AgendaItem, type Meeting, type SegmentKind, type Signal, type TimedRecord, type TimeResult } from "../../domain"
-import { evaluatingLabel, nextGuestName, nextInOrder, participantTiming, personLabel, queueOf, segmentTitle, sortedItems } from "../../engine/agenda"
+import {
+  evaluatingLabel,
+  nextGuestName,
+  nextInOrder,
+  participantTiming,
+  personLabel,
+  previousInOrder,
+  queueOf,
+  segmentTitle,
+  sortedItems,
+} from "../../engine/agenda"
 import { activityLabel, formatClock, parseClock, rangeLabel, roleLabels } from "../../engine/profiles"
 import { resultFor, signalRank, stateOf, type ActionInput, type Timer, type TimerState } from "../../engine/timing"
 import { resultLabels } from "../../engine/report"
@@ -62,6 +73,8 @@ export function TimerScreen({ data, readOnly, selectedId, select, notify, openMe
   // "Next" follows the meeting order across segments, as arranged on the Meeting screen.
   const next = nextInOrder(meeting, item?.id, i => isTimed(i) && statusOf(i) === "idle")
   const nextSegment = next && meeting.segments.find(s => s.items.some(i => i.id === next.id))
+  // "Back" takes the Timer to the previous timed person (any status), so a mistaken Next is easy to undo.
+  const previous = previousInOrder(meeting, item?.id, isTimed)
 
   const record = item && recordFor.get(item.id)
   const timer = item && timerFor(item, rules.withinRule, record?.actions)
@@ -87,6 +100,12 @@ export function TimerScreen({ data, readOnly, selectedId, select, notify, openMe
     if (!next) return
     setSegmentId(undefined)
     select(next.id)
+    notify(`Moved to ${personLabel(next)}. Tap Back to return.`)
+  }
+  const goBack = () => {
+    if (!previous) return
+    setSegmentId(undefined)
+    select(previous.id)
   }
   /** Start, then Stop, then move on: the one button the Timer's thumb rests on. */
   const primary = () => {
@@ -100,8 +119,10 @@ export function TimerScreen({ data, readOnly, selectedId, select, notify, openMe
     goNext()
   }
   const reset = () => {
-    if (status === "stopped" && !confirm(`Reset ${item && personLabel(item)}'s recorded time? You can undo this.`)) return
-    void act({ type: "reset" }).then(() => notify("Timer reset. Undo is available."))
+    const name = item && personLabel(item)
+    const prompt = status === "stopped" ? `Re-time ${name} from zero? The recorded time will be cleared. You can undo this.` : undefined
+    if (prompt && !confirm(prompt)) return
+    void act({ type: "reset" }).then(() => notify(status === "stopped" ? "Cleared the recorded time. Undo is available." : "Timer reset. Undo is available."))
   }
   const offset = (seconds: number) => void act({ type: "offset", ms: seconds * 1000 })
   const undo = () => void act({ type: "undo" })
@@ -109,6 +130,7 @@ export function TimerScreen({ data, readOnly, selectedId, select, notify, openMe
   useKeyboardShortcuts(!sheet && !readOnly && !!item, {
     " ": primary,
     n: () => status !== "running" && status !== "paused" && goNext(),
+    b: () => status !== "running" && status !== "paused" && goBack(),
     u: () => timer?.canUndo() && undo(),
     "1": () => status !== "idle" && offset(5),
     "2": () => status !== "idle" && offset(10),
@@ -156,10 +178,23 @@ export function TimerScreen({ data, readOnly, selectedId, select, notify, openMe
             Next: <b>{next ? personLabel(next) : "no one"}</b>
             {nextSegment && nextSegment.id !== segment.id && <> · {segmentTitle(nextSegment)}</>}
           </p>
-          <button className="text-button ts-queue" onClick={() => setSheet("queue")}>
-            <ListOrdered size={16} aria-hidden="true" />
-            Queue
-          </button>
+          <div className="ts-next-actions">
+            {previous && (
+              <button
+                className="text-button ts-back"
+                onClick={goBack}
+                disabled={readOnly || status === "running" || status === "paused"}
+                aria-label={`Go back to ${personLabel(previous)}`}
+              >
+                <ChevronLeft size={16} aria-hidden="true" />
+                Back
+              </button>
+            )}
+            <button className="text-button ts-queue" onClick={() => setSheet("queue")}>
+              <ListOrdered size={16} aria-hidden="true" />
+              Queue
+            </button>
+          </div>
         </div>
       </header>
 
@@ -177,6 +212,10 @@ export function TimerScreen({ data, readOnly, selectedId, select, notify, openMe
             <Check size={18} aria-hidden="true" />
             Recorded {formatClock(elapsed)} · {resultLabels[result]}
             {record?.edits.length ? " · edited" : ""}
+            <button className="ts-result-edit" onClick={() => setSheet("edit")} disabled={readOnly} aria-label="Edit time">
+              <PencilLine size={14} aria-hidden="true" />
+              Edit
+            </button>
           </p>
         ) : (
           <p className="ts-hint" aria-hidden="true">
@@ -211,22 +250,16 @@ export function TimerScreen({ data, readOnly, selectedId, select, notify, openMe
           </button>
           <button onClick={reset} disabled={!item || readOnly || status === "idle"}>
             <RotateCcw size={18} aria-hidden="true" />
-            Reset
+            {stopped ? "Re-time" : "Reset"}
           </button>
-          {stopped ? (
-            <button onClick={() => setSheet("edit")} disabled={readOnly}>
-              <PencilLine size={18} aria-hidden="true" />
-              Edit time
-            </button>
-          ) : (
-            <button
-              onClick={() => void act({ type: status === "paused" ? "resume" : "pause" })}
-              disabled={!item || readOnly || (status !== "running" && status !== "paused")}
-            >
-              {status === "paused" ? <Play size={18} aria-hidden="true" /> : <Pause size={18} aria-hidden="true" />}
-              {status === "paused" ? "Resume" : "Pause"}
-            </button>
-          )}
+          <button
+            className={stopped ? "ts-resume-after-stop" : undefined}
+            onClick={() => void act({ type: status === "running" ? "pause" : "resume" })}
+            disabled={!item || readOnly || status === "idle"}
+          >
+            {status === "running" ? <Pause size={18} aria-hidden="true" /> : <Play size={18} aria-hidden="true" />}
+            {status === "running" ? "Pause" : "Resume"}
+          </button>
           <button aria-pressed={settings.silent} onClick={() => void repo.settings.update({ silent: !settings.silent })}>
             {settings.silent ? <BellOff size={18} aria-hidden="true" /> : <Bell size={18} aria-hidden="true" />}
             Silent

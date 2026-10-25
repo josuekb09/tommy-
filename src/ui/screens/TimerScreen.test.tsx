@@ -196,6 +196,48 @@ describe("Timer screen", () => {
     expect(clockText()).toMatch(/^0:15 /)
   })
 
+  it("Resume after an accidental Stop continues from the time shown; the stopped gap is not counted", async () => {
+    await setup()
+    await user.click(screen.getByRole("button", { name: "Start" }))
+    await advance(10_000)
+    await user.click(await screen.findByRole("button", { name: "Stop" }))
+    await screen.findByText(/Recorded 0:10/)
+    // Timer realises the speaker is still going; 30 seconds pass before they press Resume.
+    await advance(30_000)
+    await user.click(screen.getByRole("button", { name: "Resume" }))
+    expect(await screen.findByRole("button", { name: "Stop" })).toBeTruthy()
+    expect(clockText()).toMatch(/^0:10 /)
+    await advance(5_000)
+    expect(clockText()).toMatch(/^0:15 /)
+    await user.click(screen.getByRole("button", { name: "Stop" }))
+    expect(await screen.findByText(/Recorded 0:15/)).toBeTruthy()
+  })
+
+  it("Re-time clears the recorded time; the primary button becomes Start again", async () => {
+    await setup()
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true)
+    await user.click(screen.getByRole("button", { name: "Start" }))
+    await advance(10_000)
+    await user.click(await screen.findByRole("button", { name: "Stop" }))
+    await screen.findByText(/Recorded 0:10/)
+    await user.click(screen.getByRole("button", { name: "Re-time" }))
+    expect(await screen.findByRole("button", { name: "Start" })).toBeTruthy()
+    expect(clockText()).toMatch(/^0:00 /)
+    confirmSpy.mockRestore()
+  })
+
+  it("Back returns to the previous timed person after Next", async () => {
+    await setup()
+    await user.click(screen.getByRole("button", { name: "Start" }))
+    await advance(10_000)
+    await user.click(await screen.findByRole("button", { name: "Stop" }))
+    await user.click(await screen.findByRole("button", { name: "Next speaker" }))
+    expect(await screen.findByRole("heading", { name: "Ben Okafor" })).toBeTruthy()
+    await user.click(screen.getByRole("button", { name: /^Go back to Ada Lovelace/ }))
+    expect(await screen.findByRole("heading", { name: "Ada Lovelace" })).toBeTruthy()
+    expect(screen.getByText(/Recorded 0:10/)).toBeTruthy()
+  })
+
   it("silent mode suppresses vibration and sound but still announces", async () => {
     await setup()
     await user.click(screen.getByRole("button", { name: "Silent" }))

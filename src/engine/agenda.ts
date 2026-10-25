@@ -22,6 +22,15 @@ export function nextInOrder(meeting: Meeting, currentId: string | undefined, wai
   return items.slice(index + 1).find(waiting) ?? items.slice(0, Math.max(index, 0)).find(waiting)
 }
 
+/** Who comes before `currentId` in meeting order, among items the caller cares about. No wrap-around. */
+export function previousInOrder(meeting: Meeting, currentId: string | undefined, keep: (item: AgendaItem) => boolean): AgendaItem | undefined {
+  const items = orderedItems(meeting)
+  const index = items.findIndex(item => item.id === currentId)
+  if (index <= 0) return undefined
+  for (let i = index - 1; i >= 0; i--) if (keep(items[i])) return items[i]
+  return undefined
+}
+
 /** Moves an item to a new position within its segment. */
 export function moveItem(meeting: Meeting, itemId: string, toIndex: number): Meeting {
   return {
