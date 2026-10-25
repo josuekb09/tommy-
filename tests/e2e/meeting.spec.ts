@@ -121,6 +121,60 @@ test("the agenda can be reordered by dragging, saved as a template and reused fo
   await expect(page.getByText("No name yet")).toHaveCount(3)
 })
 
+test("Timer forgives mistakes: accidental Stop can Resume, Re-time starts over, Back returns to the previous speaker, and a mid-meeting reload loses nothing", async ({
+  page,
+}) => {
+  test.setTimeout(180_000)
+  await page.setViewportSize({ width: 360, height: 740 })
+  await openWithFakeClock(page)
+  await nav(page, "Meeting")
+
+  await addPerson(page, "Prepared speeches", "Ada Speaker", { time: "5-7" })
+  await addPerson(page, "Prepared speeches", "Ben Speaker", { time: "5-7" })
+  await page.getByRole("button", { name: "Start meeting" }).click()
+
+  // Scenario 1: pressing Stop instead of Pause. Resume carries on from where it stopped;
+  // the stopped gap is not counted.
+  await expect(page.locator("#timer-person")).toHaveText("Ada Speaker")
+  await page.getByRole("button", { name: "Start", exact: true }).click()
+  await page.clock.runFor(300_000)
+  await page.getByRole("button", { name: "Stop", exact: true }).click()
+  await expect(page.getByText(/^Recorded 5:00/)).toBeVisible()
+  // 20 seconds pass while the Timer realises the speaker is still going.
+  await page.clock.runFor(20_000)
+  await page.getByRole("button", { name: "Resume", exact: true }).click()
+  await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible()
+  await expect(page.getByRole("timer")).toHaveAttribute("aria-label", /^5:0\d /)
+  await page.clock.runFor(60_000)
+  await page.getByRole("button", { name: "Stop", exact: true }).click()
+  await expect(page.getByText(/^Recorded 6:00/)).toBeVisible()
+
+  // Scenario 2: mid-meeting reload. The recorded time survives.
+  await page.reload()
+  await expect(page.locator("#timer-person")).toHaveText("Ada Speaker")
+  await expect(page.getByText(/^Recorded 6:00/)).toBeVisible()
+
+  // Scenario 3: edit the recorded time with a reason.
+  await page.getByRole("button", { name: "Edit time", exact: true }).click()
+  const dialog = sheet(page)
+  await dialog.getByRole("textbox", { name: "Recorded time" }).fill("6:05")
+  await dialog.getByRole("textbox", { name: "Reason for the edit" }).fill("Started 5 s late")
+  await dialog.getByRole("button", { name: "Save recorded time" }).click()
+  await expect(page.getByText(/^Recorded 6:05.*edited/)).toBeVisible()
+
+  // Scenario 4: move to next, then Back.
+  await page.getByRole("button", { name: "Next speaker" }).click()
+  await expect(page.locator("#timer-person")).toHaveText("Ben Speaker")
+  await page.getByRole("button", { name: /^Go back to Ada Speaker/ }).click()
+  await expect(page.locator("#timer-person")).toHaveText("Ada Speaker")
+  await expect(page.getByText(/^Recorded 6:05.*edited/)).toBeVisible()
+
+  // Scenario 5: Re-time clears the recorded value, with a confirm.
+  page.on("dialog", confirm => void confirm.accept())
+  await page.getByRole("button", { name: "Re-time", exact: true }).click()
+  await expect(page.getByRole("button", { name: "Start", exact: true })).toBeVisible()
+})
+
 test("a member's other spellings are edited in Settings and find them when building the agenda", async ({ page }) => {
   await page.goto("/")
   await nav(page, "Settings")

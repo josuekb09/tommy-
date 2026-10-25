@@ -68,8 +68,17 @@ export function TimerScreen({ data, readOnly, selectedId, select, notify, openMe
   const segment = segments.find(s => s.id === segmentId) ?? segments.find(s => s.items.some(item => item.id === selectedId)) ?? runningSegment ?? segments[0]
   // Agenda-only lines (an intro with no time printed, a break) are never timed.
   const items = sortedItems(segment).filter(isTimed)
+  // After a reload the selection is gone, so the person last stopped is preferred over the next idle one:
+  // the user had just finished them and may still want Resume or Edit before moving on.
+  const lastStopped = items
+    .map(i => ({ item: i, state: timerStateOf(recordFor.get(i.id)) }))
+    .filter(({ state }) => state.status === "stopped")
+    .sort((a, b) => (b.state.stoppedAt ?? 0) - (a.state.stoppedAt ?? 0))[0]?.item
   const item =
-    items.find(i => i.id === selectedId) ?? items.find(i => ["running", "paused"].includes(statusOf(i))) ?? items.find(i => statusOf(i) !== "stopped")
+    items.find(i => i.id === selectedId) ??
+    items.find(i => ["running", "paused"].includes(statusOf(i))) ??
+    lastStopped ??
+    items.find(i => statusOf(i) === "idle")
   // "Next" follows the meeting order across segments, as arranged on the Meeting screen.
   const next = nextInOrder(meeting, item?.id, i => isTimed(i) && statusOf(i) === "idle")
   const nextSegment = next && meeting.segments.find(s => s.items.some(i => i.id === next.id))
