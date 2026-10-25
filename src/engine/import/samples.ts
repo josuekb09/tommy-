@@ -199,3 +199,24 @@ export const pinelandsSample: RawAgenda = {
   ...empty,
   ignored: ["officers sidebar", "handwritten times next to speakers and evaluators", "Zoom meeting ID and passcode", "QR code"],
 }
+
+/** Not a fixture: a short made-up agenda for review tests: one speaker with a hard-to-read name, one with none, their evaluators, and a name spelled two ways. */
+export const reviewSample: RawAgenda = {
+  readable: true,
+  problem: null,
+  meeting: { club: "Test Club", date: "2026-11-04", theme: "Beginnings", wordOfTheDay: null, venue: null, startTime: "19:00", meetingNumber: null },
+  lines: [
+    row(1, "19:00", "Toastmaster", "Tom Master", null, null),
+    row(1, "19:05", "Timer", "Tia Timer", null, null),
+    row(1, "19:10", "Speaker 1", "Ada Lovel", null, "5-7 min", { confidence: { person: 0.5 } }),
+    row(1, "19:20", "Speaker 2", null, null, "5-7 min"),
+    row(1, "19:40", "Evaluator 1", "Eve One", null, "2-3 min", { evaluates: "Speaker 1" }),
+    row(1, "19:45", "Evaluator 2", "Evan Two", null, "2-3 min", { evaluates: "Speaker 2" }),
+    row(1, "19:55", "Timer's report", "Tia Timer", null, null),
+    row(1, "20:00", "Grammarian", "Tia Timmer", null, null),
+  ],
+  attending: [],
+  specialGuests: [],
+  apologies: [],
+  ignored: [],
+}

@@ -2,7 +2,9 @@ import type { AgendaItem, AppSettings, Club, Guest, Meeting, Member, Segment, Se
 import { appendAction } from "../engine/timing"
 import { insertItem, moveItem, moveSegment } from "../engine/agenda"
 import { defaultRules, definitionOf, resolveProfile, rulesOf } from "../engine/profiles"
-import { segmentKinds, segmentsFromTemplate, templateFromMeeting } from "../engine/templates"
+import { draftToSegments, type ImportDraft } from "../engine/import/build"
+import type { CorrectionSummary } from "../engine/import/review"
+import { segmentKinds, segmentsFromTemplate, templateFromMeeting, withAllSegments } from "../engine/templates"
 import type { TommyDB } from "./db"
 
 export const defaultSettings: AppSettings = { sound: false, vibration: true, silent: false, speakerClock: false, signalPatterns: true, theme: "system" }
@@ -247,7 +249,46 @@ export function createRepository(db: TommyDB, options: { now?: () => number; ids
     },
   }
 
-  return { db, settings, clubs, meetings, records, members, guests, templates }
+  const imports = {
+    /**
+     * Turns a confirmed scan into the new current meeting, in one transaction
+     * with its corrections log row. The meeting being replaced stays saved
+     * (ended, unless it was never started), like New meeting.
+     */
+    async confirm(input: { original: ImportDraft; final: ImportDraft; summary: CorrectionSummary; model: string; clubId?: string }): Promise<Meeting> {
+      const at = now()
+      const { meeting: printed } = input.final
+      const meeting: Meeting = {
+        ...blankMeeting(at, ids, input.clubId),
+        ...(printed.date && /^\d{4}-\d{2}-\d{2}$/.test(printed.date) && { date: printed.date }),
+        ...(printed.theme && { theme: printed.theme }),
+        ...(printed.wordOfTheDay && { wordOfTheDay: printed.wordOfTheDay }),
+        ...(printed.venue && { venue: printed.venue }),
+        ...(printed.startTime && { startTime: printed.startTime }),
+        segments: withAllSegments(draftToSegments(input.final, ids), "", ids),
+      }
+      await db.transaction("rw", [db.meetings, db.settings, db.importLog], async () => {
+        const { currentMeetingId } = await settings.get()
+        const previous = currentMeetingId ? await db.meetings.get(currentMeetingId) : undefined
+        if (previous && previous.status === "live") await db.meetings.put({ ...previous, status: "finished", updatedAt: at })
+        await db.meetings.put(meeting)
+        await db.importLog.put({
+          id: ids(),
+          meetingId: meeting.id,
+          confirmedAt: at,
+          model: input.model,
+          original: input.original,
+          final: input.final,
+          summary: input.summary,
+        })
+        await settings.update({ currentMeetingId: meeting.id })
+      })
+      return meeting
+    },
+    log: () => db.importLog.orderBy("confirmedAt").reverse().toArray(),
+  }
+
+  return { db, settings, clubs, meetings, records, members, guests, templates, imports }
 }
 
 export type Repository = ReturnType<typeof createRepository>

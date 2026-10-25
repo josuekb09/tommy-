@@ -7,6 +7,9 @@ import { convertLegacy, migrateLegacyIfNeeded, type LegacyMeeting } from "./migr
 import { createRepository, RecordedTimeError, type Repository } from "./repository"
 import { profileFor, defaultRules } from "../engine/profiles"
 import { elapsedAt, stateOf } from "../engine/timing"
+import { buildDraft } from "../engine/import/build"
+import { acceptFlag, itemsOf, openFlags, startReview, summarizeCorrections } from "../engine/import/review"
+import { reviewSample } from "../engine/import/samples"
 
 let db: TommyDB
 let repo: Repository
@@ -361,5 +364,32 @@ describe("imported agendas: repeated segments, agenda-only lines, Table Topics t
     await repo.meetings.applyClubRules(meeting.id, { ...(await repo.clubs.current()), defaultRules: { ...defaultRules, graceAppliesToTableTopics: true } })
     const tt = (await repo.meetings.get(meeting.id))!.segments[1].participantTiming!
     expect([tt.green, tt.red, tt.graceSeconds]).toEqual([60, 150, 30])
+  })
+})
+
+describe("agenda scan import", () => {
+  it("a confirmed scan becomes the current meeting, with its corrections log", async () => {
+    const before = await repo.meetings.current()
+    await repo.meetings.update(before.id, meeting => ({ ...meeting, status: "live" }))
+    const original = buildDraft(reviewSample, { rules: defaultRules, people: [] })
+    let review = startReview(original)
+    for (const { item } of openFlags(review)) review = acceptFlag(review, item.key, 0)
+    const meeting = await repo.imports.confirm({ original, final: review.draft, summary: summarizeCorrections(original, review, 0), model: "test-model" })
+
+    expect((await repo.meetings.current()).id).toBe(meeting.id)
+    expect((await repo.meetings.get(before.id))!.status).toBe("finished")
+    expect([meeting.date, meeting.theme, meeting.startTime]).toEqual(["2026-11-04", "Beginnings", "19:00"])
+    // Every segment kind exists, so the builder can add to any of them.
+    expect(new Set(meeting.segments.map(segment => segment.kind))).toEqual(
+      new Set(["opening", "prepared_speeches", "table_topics", "evaluations", "reports", "other"]),
+    )
+    const items = meeting.segments.flatMap(segment => segment.items)
+    const ada = items.find(item => item.personName === "Ada Lovel")!
+    expect(items.find(item => item.personName === "Eve One")!.evaluatesItemId).toBe(ada.id)
+    expect(items.some(item => "flags" in item || "source" in item)).toBe(false)
+
+    const [log] = await repo.imports.log()
+    expect([log.meetingId, log.model, log.summary.flagsAccepted]).toEqual([meeting.id, "test-model", 3])
+    expect(itemsOf(log.original)).toHaveLength(itemsOf(original).length)
   })
 })

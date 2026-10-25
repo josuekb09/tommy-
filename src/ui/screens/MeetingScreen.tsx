@@ -40,6 +40,7 @@ import type { AppData, Notify } from "../hooks"
 import { peopleOf, PersonField, savePerson, type PersonChoice } from "../people"
 import { repo } from "../runtime"
 import { resolveTiming, TimingField, type TimingChoice } from "../timing-field"
+import { ReviewScreen, ScanSheet, type ScannedAgenda } from "./ScanReview"
 
 const rolesFor: Record<SegmentKind, AgendaRole[]> = {
   opening: ["Toastmaster", "President", "SergeantAtArms", "Other"],
@@ -52,12 +53,13 @@ const rolesFor: Record<SegmentKind, AgendaRole[]> = {
 const pairedRoles: AgendaRole[] = ["Evaluator", "EvaluatorBrief"]
 
 type Data = AppData & { meeting: Meeting }
-type SheetState = { type: "add"; segmentId: string } | { type: "edit"; itemId: string } | { type: "new" } | { type: "template" }
+type SheetState = { type: "add"; segmentId: string } | { type: "edit"; itemId: string } | { type: "new" } | { type: "template" } | { type: "scan" }
 
 export function MeetingScreen({ data, readOnly, open, notify }: { data: Data; readOnly: boolean; open: (itemId: string) => void; notify: Notify }) {
   const { meeting, records } = data
   const statusOf = (item: AgendaItem) => stateOf(records.find(record => record.agendaItemId === item.id)?.actions ?? []).status
   const [sheet, setSheet] = useState<SheetState>()
+  const [scan, setScan] = useState<ScannedAgenda>()
   const close = () => setSheet(undefined)
   const done = (message: string) => {
     setSheet(undefined)
@@ -94,6 +96,19 @@ export function MeetingScreen({ data, readOnly, open, notify }: { data: Data; re
     await repo.settings.update({ currentMeetingId: id })
     notify(`Switched to ${label}`)
   }
+
+  if (scan)
+    return (
+      <ReviewScreen
+        scan={scan}
+        clubId={meeting.clubId}
+        cancel={() => setScan(undefined)}
+        confirmed={message => {
+          setScan(undefined)
+          notify(message)
+        }}
+      />
+    )
 
   return (
     <section className="screen meeting-screen">
@@ -230,7 +245,17 @@ export function MeetingScreen({ data, readOnly, open, notify }: { data: Data; re
           done={done}
         />
       )}
-      {sheet?.type === "new" && <NewMeetingSheet data={data} close={close} done={done} />}
+      {sheet?.type === "new" && <NewMeetingSheet data={data} close={close} done={done} scan={() => setSheet({ type: "scan" })} />}
+      {sheet?.type === "scan" && (
+        <ScanSheet
+          data={data}
+          close={close}
+          scanned={result => {
+            setSheet(undefined)
+            setScan(result)
+          }}
+        />
+      )}
       {sheet?.type === "template" && <SaveTemplateSheet data={data} close={close} done={done} />}
     </section>
   )
@@ -610,7 +635,7 @@ const templateSummary = (template: Template) => {
 }
 
 /** A blank meeting, or one from a built-in or saved template. The current meeting and its times stay saved. */
-function NewMeetingSheet({ data, close, done }: { data: Data; close: () => void; done: (message: string) => void }) {
+function NewMeetingSheet({ data, close, done, scan }: { data: Data; close: () => void; done: (message: string) => void; scan: () => void }) {
   const { meeting } = data
   const start = async (template?: Template) => {
     await repo.meetings.update(meeting.id, current => ({ ...current, status: current.status === "draft" ? "draft" : "finished" }))
@@ -626,6 +651,10 @@ function NewMeetingSheet({ data, close, done }: { data: Data; close: () => void;
     <Sheet title="New meeting" eyebrow="Agenda" onClose={close}>
       <p className="sheet-note">This meeting and its times stay saved on this device.</p>
       <div className="template-list">
+        <button className="template-choice" onClick={scan}>
+          <b>Scan a printed agenda</b>
+          <small>Photo or PDF · you check every row first · needs internet</small>
+        </button>
         <button className="template-choice" onClick={() => void start()}>
           <b>Blank meeting</b>
           <small>Add everyone yourself</small>
