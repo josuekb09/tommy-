@@ -57,6 +57,22 @@ means the user never sends a photo without seeing where it goes.
 screen's pre-scan sheet; `functions/api/parse-agenda.ts` (production secret
 only). The browser never sees `GEMINI_API_KEY`.
 
+## 2026-10-25 — Last-stopped speaker wins after a mid-meeting reload
+
+**Decision.** When nothing is running and there is no explicit selection, the
+Timer screen now picks the most recently stopped item instead of the first
+idle one.
+
+**Why.** A refresh mid-meeting resets the React `selectedId` state. Without
+this rule, pressing Stop and then reloading would push the Timer past the
+person just timed, straight to the next idle one — Resume and Edit would be
+out of reach.
+
+**Where it applies.** `src/ui/screens/TimerScreen.tsx` current-item fallback;
+covered by the "Timer forgives mistakes" Playwright test
+(`tests/e2e/meeting.spec.ts`), which stops Ada, reloads, and checks the Timer
+is still on Ada with the 6:00 result shown.
+
 ## 2026-10-25 — Table Topics speakers are never prefilled by the scan
 
 **Decision.** The scan may read a Table Topics *section header* and total
