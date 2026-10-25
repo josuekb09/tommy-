@@ -24,6 +24,7 @@ const extractWith = (response: Response | Error) => {
     run: () =>
       createGeminiExtractor({
         apiKey: "test-key",
+        fallbackModels: [],
         fetch,
         now: (() => {
           let t = 0
@@ -58,6 +59,11 @@ describe("Gemini request", () => {
       thinkingConfig: { thinkingLevel: "medium" },
     })
     expect(request.systemInstruction.parts[0].text).toContain("Never guess or complete a name")
+  })
+
+  it("gives Gemini 2.x a thinking budget, because it refuses a thinking level", () => {
+    expect(geminiRequest([page], {}, "gemini-2.5-flash").generationConfig.thinkingConfig).toEqual({ thinkingBudget: 4_096 })
+    expect(geminiRequest([page], { thinkingLevel: "low" }, "gemini-3.5-flash").generationConfig.thinkingConfig).toEqual({ thinkingLevel: "low" })
   })
 
   it("puts the key in a header, never in the URL or the body", async () => {
@@ -101,7 +107,9 @@ describe("Gemini reply", () => {
   it.each([
     [reply({ error: { message: "API key not valid" } }, { status: 403 }), "not_configured"],
     [reply({ error: { message: "schema too complex" } }, { status: 400 }), "bad_request"],
-    [reply({ error: { message: "overloaded" } }, { status: 503 }), "unavailable"],
+    [reply({ error: { message: "high demand" } }, { status: 503 }), "busy"],
+    [reply({ error: { message: "internal" } }, { status: 500 }), "busy"],
+    [reply({ error: { message: "bad gateway" } }, { status: 502 }), "unavailable"],
     [ok("not json"), "unreadable"],
     [ok(JSON.stringify({ lines: "nope" })), "unreadable"],
     [reply({ candidates: [{ content: { parts: [{ text: "{" }] }, finishReason: "MAX_TOKENS" }] }), "unreadable"],
@@ -109,5 +117,42 @@ describe("Gemini reply", () => {
     [new TypeError("fetch failed"), "unavailable"],
   ] as const)("classifies failure %#", async (response, kind) => {
     expect((await failure(response)).kind).toBe(kind)
+  })
+})
+
+describe("Fallback models", () => {
+  const busy = () => reply({ error: { status: "UNAVAILABLE", message: "This model is currently experiencing high demand." } }, { status: 503 })
+  const quota = () => reply({ error: { status: "RESOURCE_EXHAUSTED", message: "Quota exceeded" } }, { status: 429 })
+  const run = (replies: (() => Response)[], fallbackModels?: string[]) => {
+    const fetch = vi.fn(async () => replies.shift()!())
+    const extractor = createGeminiExtractor({ apiKey: "test-key", fetch, ...(fallbackModels && { fallbackModels }) })
+    const models = () => (fetch.mock.calls as unknown as [string, RequestInit][]).map(([url]) => url.match(/models\/(.+):generateContent/)![1])
+    const bodies = () => (fetch.mock.calls as unknown as [string, RequestInit][]).map(([, init]) => JSON.parse(String(init.body)))
+    return { promise: extractor.extractAgenda([page]), models, bodies }
+  }
+
+  it("tries the free fallback models in order when Gemini is busy or out of free quota", async () => {
+    const scan = run([busy, quota, () => ok(JSON.stringify(toastedSample), { modelVersion: "gemini-2.5-flash" })])
+    expect((await scan.promise).model).toBe("gemini-2.5-flash")
+    expect(scan.models()).toEqual(["gemini-3.8-flash", "gemini-3.5-flash", "gemini-2.5-flash"])
+    expect(scan.bodies()[2].generationConfig.thinkingConfig).toEqual({ thinkingBudget: 4_096 })
+  })
+
+  it("reports the main model's failure when every model fails", async () => {
+    const scan = run([busy, quota, quota])
+    await expect(scan.promise).rejects.toMatchObject({ kind: "busy" })
+    expect(scan.models()).toHaveLength(3)
+  })
+
+  it("does not try other models for a refused key or a refused request", async () => {
+    const refused = run([() => reply({ error: { message: "API key not valid" } }, { status: 403 })])
+    await expect(refused.promise).rejects.toMatchObject({ kind: "not_configured" })
+    expect(refused.models()).toEqual(["gemini-3.8-flash"])
+  })
+
+  it("can be turned off", async () => {
+    const scan = run([busy], [])
+    await expect(scan.promise).rejects.toMatchObject({ kind: "busy" })
+    expect(scan.models()).toEqual(["gemini-3.8-flash"])
   })
 })

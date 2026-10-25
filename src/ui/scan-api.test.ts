@@ -36,7 +36,14 @@ describe("scanning from the browser", () => {
     const down = vi.fn(async () => {
       throw new TypeError("Failed to fetch")
     })
-    expect(await scanAgenda([page], { fetch: down, online })).toMatchObject({ kind: "unavailable" })
+    expect(await scanAgenda([page], { fetch: down, online })).toMatchObject({
+      kind: "unavailable",
+      message: "Couldn’t reach Tommy’s scan service. Check the connection and try again, or build it by hand.",
+    })
+    expect(await scanAgenda([page], { fetch: respond(503, { error: "busy", message: "x" }), online })).toMatchObject({
+      kind: "busy",
+      message: "Google Gemini is busy right now. Try again in a minute, or build it by hand.",
+    })
   })
 })
 

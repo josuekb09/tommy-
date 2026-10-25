@@ -130,3 +130,25 @@ front of the speaker. Link-ins would only add rows the Timer does not report.
 
 **Where it applies.** `src/engine/templates.ts`; `src/engine/templates.test.ts`
 ("matches the club's real agenda").
+
+## 2026-10-25 — Agenda scan falls back to other free Gemini models
+
+**Decision.** When the main model (`gemini-3.8-flash`) answers 503/500 (busy)
+or 429 (free quota used up), the scan tries `gemini-3.5-flash`, then
+`gemini-2.5-flash`, within one 140 s deadline. If every model fails, the main
+model's error is reported. A busy model is its own error kind, `busy`, with its
+own message ("Google Gemini is busy right now"); a request that never reached
+Tommy's server says so, apart from Gemini not answering. Failures are logged
+(kind and the provider's message, never photos or the key) so
+`wrangler pages deployment tail` shows the cause.
+
+**Why.** On the preview, every scan failed with "The scanning service isn't
+answering": the key and model were fine, but 3.8-flash was overloaded (503
+"high demand") and later out of free quota. Each model has its own free quota,
+so falling back stays at zero cost. The Timer still checks every row.
+
+**Where it applies.** `server/extract/gemini.ts` (`DEFAULT_FALLBACK_MODELS`,
+Gemini 2.x gets `thinkingBudget` instead of `thinkingLevel`; override with the
+`GEMINI_FALLBACK_MODELS` env var, empty for none), `server/extract/handler.ts`,
+`src/engine/import/wire.ts`, `src/ui/scan-api.ts`, and their tests. The
+accuracy bench turns fallbacks off so it measures the chosen model.

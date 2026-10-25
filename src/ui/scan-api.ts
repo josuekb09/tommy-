@@ -12,7 +12,8 @@ const failed = (kind: ScanErrorKind, retryAfterSeconds?: number): ScanOutcome =>
 /**
  * Sends the pages to Tommy's own /api/parse-agenda (never to the model
  * provider directly) and turns every failure into a message that offers the
- * manual builder. Offline is answered at once, without a request.
+ * manual builder. Offline is answered at once, without a request; a request
+ * that never got an answer is told apart from Gemini not answering.
  */
 export async function scanAgenda(
   images: AgendaImage[],
@@ -29,7 +30,8 @@ export async function scanAgenda(
       signal: AbortSignal.timeout(options.timeoutMs ?? 150_000),
     })
   } catch (error) {
-    return failed(error instanceof DOMException && error.name === "TimeoutError" ? "timeout" : "unavailable")
+    if (error instanceof DOMException && error.name === "TimeoutError") return failed("timeout")
+    return { ok: false, kind: "unavailable", message: "Couldn’t reach Tommy’s scan service. Check the connection and try again, or build it by hand." }
   }
   const body: unknown = await response.json().catch(() => undefined)
   if (response.ok) {

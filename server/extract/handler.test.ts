@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { pinelandsSample } from "../../src/engine/import/samples"
 import { handleScan } from "./handler"
 import { ExtractError, type AgendaExtractor } from "./provider"
@@ -18,6 +18,9 @@ const extractor = (result: () => ReturnType<AgendaExtractor["extractAgenda"]>) =
 const success = extractor(async () => ({ agenda: pinelandsSample, model: "test-model", usage: { inputTokens: 1, outputTokens: 2, thoughtTokens: 0 }, ms: 5 }))
 
 describe("POST /api/parse-agenda", () => {
+  const log = vi.spyOn(console, "error").mockImplementation(() => {})
+  beforeEach(() => log.mockClear())
+
   it("returns the transcription for a same-origin request with valid pages", async () => {
     const response = await handleScan(post({ images: [page, page] }), { GEMINI_API_KEY: "k" }, success.make)
     expect(response.status).toBe(200)
@@ -64,12 +67,23 @@ describe("POST /api/parse-agenda", () => {
     expect(JSON.stringify(body)).not.toContain("secret-key-value")
   })
 
+  it("says Gemini is busy, and logs the provider's reason for the function log", async () => {
+    const busy = extractor(async () => {
+      throw new ExtractError("busy", "The model is busy (503): gemini-3.8-flash: high demand")
+    })
+    const response = await handleScan(post({ images: [page] }), { GEMINI_API_KEY: "secret-key-value" }, busy.make)
+    expect(response.status).toBe(503)
+    expect(await response.json()).toEqual({ error: "busy", message: "Google Gemini is busy right now. Try again in a minute, or build it by hand." })
+    expect(log).toHaveBeenCalledWith("parse-agenda failed: busy: The model is busy (503): gemini-3.8-flash: high demand")
+    expect(JSON.stringify(log.mock.calls)).not.toContain("secret-key-value")
+  })
+
   it("never passes provider error details to the browser", async () => {
     const broken = extractor(async () => {
       throw new ExtractError("unavailable", "upstream said: key AIzaSecret is over quota")
     })
     const body = await (await handleScan(post({ images: [page] }), { GEMINI_API_KEY: "k" }, broken.make)).json()
-    expect(body).toEqual({ error: "unavailable", message: "The scanning service isn’t answering. Try again later, or build it by hand." })
+    expect(body).toEqual({ error: "unavailable", message: "Google Gemini isn’t answering. Try again later, or build it by hand." })
     const crashed = extractor(async () => {
       throw new Error("boom")
     })

@@ -86,7 +86,7 @@ describe("agenda scan accuracy bench", () => {
     expect(KEY).not.toBe("")
     mkdirSync(CACHE, { recursive: true })
     mkdirSync(OUT, { recursive: true })
-    const extractor = createGeminiExtractor({ apiKey: KEY, model: MODEL, timeoutMs: 540_000 })
+    const extractor = createGeminiExtractor({ apiKey: KEY, model: MODEL, fallbackModels: [], timeoutMs: 540_000 })
     const reports: FixtureReport[] = []
     for (const fixture of fixtures) {
       console.log(`\n=== ${fixture.label} ===`)

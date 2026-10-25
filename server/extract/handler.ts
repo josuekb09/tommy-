@@ -2,7 +2,7 @@ import { scanMessages, scanRequest, type ScanFailure, type ScanSuccess } from ".
 import { createGeminiExtractor } from "./gemini"
 import { ExtractError, type AgendaExtractor } from "./provider"
 
-export type ScanEnv = { GEMINI_API_KEY?: string; GEMINI_MODEL?: string }
+export type ScanEnv = { GEMINI_API_KEY?: string; GEMINI_MODEL?: string; GEMINI_FALLBACK_MODELS?: string }
 /** Up to 4 pages of base64 plus JSON overhead. */
 const MAX_BODY_BYTES = 33_000_000
 
@@ -18,8 +18,10 @@ const fail = (status: number, error: ScanFailure["error"], retryAfterSeconds?: n
 
 /**
  * POST /api/parse-agenda. The API key stays on the server: the browser sends
- * photos to its own origin and gets back a transcription. Nothing is stored
- * or logged. Only same-origin browser requests with a valid body reach the model.
+ * photos to its own origin and gets back a transcription. Nothing is stored.
+ * Only a failure is logged, as its kind and the provider's message (never the
+ * photos or the key), so wrangler pages deployment tail shows the real cause.
+ * Only same-origin browser requests with a valid body reach the model.
  */
 export async function handleScan(
   request: Request,
@@ -39,10 +41,20 @@ export async function handleScan(
     const result = await extractor.extractAgenda(body.data.images)
     return json(result, 200)
   } catch (error) {
+    console.error(`parse-agenda failed: ${error instanceof ExtractError ? error.kind : "crash"}: ${error instanceof Error ? error.message : String(error)}`)
     if (!(error instanceof ExtractError)) return fail(502, "unavailable")
-    const status = { rate_limited: 429, unreadable: 422, bad_request: 400, not_configured: 503, unavailable: 502, timeout: 504 }[error.kind]
+    const status = { rate_limited: 429, busy: 503, unreadable: 422, bad_request: 400, not_configured: 503, unavailable: 502, timeout: 504 }[error.kind]
     return fail(status, error.kind, error.retryAfterSeconds)
   }
 }
 
-const defaultExtractor = (env: ScanEnv) => (env.GEMINI_API_KEY ? createGeminiExtractor({ apiKey: env.GEMINI_API_KEY, model: env.GEMINI_MODEL }) : undefined)
+const defaultExtractor = (env: ScanEnv) =>
+  env.GEMINI_API_KEY
+    ? createGeminiExtractor({
+        apiKey: env.GEMINI_API_KEY,
+        model: env.GEMINI_MODEL,
+        fallbackModels: env.GEMINI_FALLBACK_MODELS?.split(",")
+          .map(model => model.trim())
+          .filter(Boolean),
+      })
+    : undefined
