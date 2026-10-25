@@ -2198,6 +2198,52 @@ html[data-theme="dark"] .timing-preview.invalid {
   gap: 10px;
   margin-top: 16px;
 }
+.screen-title-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.meeting-status-chip {
+  color: var(--muted);
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 600;
+}
+.past-meetings {
+  margin-top: 24px;
+}
+.past-meetings h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  margin: 0 0 10px;
+  color: var(--muted);
+}
+.past-meetings ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+.past-meeting {
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.past-meeting small {
+  color: var(--muted);
+}
 .sheet-submit.danger {
   margin-top: 10px;
   color: var(--red);

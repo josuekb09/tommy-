@@ -172,4 +172,31 @@ describe("Meeting screen", () => {
     await user.click(screen.getByRole("button", { name: "New meeting" }))
     expect(within(dialog()).getByRole("button", { name: /^TuesdaySaved template · 1 speech$/ })).toBeTruthy()
   })
+
+  it("ends a meeting as view-only, lists it under Past meetings, and switches back to reopen it", async () => {
+    await addSpeaker("Ada")
+    const first = await repo.meetings.current()
+    await repo.meetings.update(first.id, current => ({ ...current, theme: "Harvest" }))
+    await user.click(screen.getByRole("button", { name: "End meeting" }))
+    await screen.findByRole("button", { name: "Reopen meeting" })
+    expect((await repo.meetings.current()).status).toBe("finished")
+    // The agenda of an ended meeting cannot be changed by mistake.
+    expect(screen.queryByRole("button", { name: "Start meeting" })).toBeNull()
+    expect((screen.getByLabelText("Theme") as HTMLInputElement).disabled).toBe(true)
+    expect((screen.getByRole("button", { name: "Add to Prepared speeches" }) as HTMLButtonElement).disabled).toBe(true)
+
+    await user.click(screen.getByRole("button", { name: "New meeting" }))
+    await user.click(within(dialog()).getByRole("button", { name: /ToastED format/ }))
+    const past = await screen.findByRole("region", { name: "Past meetings" })
+    const entry = await within(past).findByRole("button", { name: new RegExp(`^${first.date} · Harvest`) })
+    expect(entry.textContent).toContain("Ended · 1 item")
+    expect((await repo.meetings.current()).id).not.toBe(first.id)
+
+    await user.click(entry)
+    await waitFor(async () => expect((await repo.meetings.current()).id).toBe(first.id))
+    await user.click(await screen.findByRole("button", { name: "Reopen meeting" }))
+    await screen.findByRole("button", { name: "End meeting" })
+    expect((await repo.meetings.current()).status).toBe("live")
+    expect(rowNames("Prepared speeches")).toEqual(["Ada"])
+  })
 })

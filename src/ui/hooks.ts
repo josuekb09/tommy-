@@ -61,7 +61,9 @@ export function useAppData() {
     const guests = await db.guests.toArray()
     const members = await db.members.orderBy("name").toArray()
     const templates = await db.templates.toArray()
-    return { settings, meeting, records, rules: rulesOf(club), clubProfiles: club?.profiles ?? {}, club, guests, members, templates }
+    // Every meeting, latest first — the Meeting screen's past-meetings list reads from here.
+    const meetings = await db.meetings.orderBy("date").reverse().toArray()
+    return { settings, meeting, records, rules: rulesOf(club), clubProfiles: club?.profiles ?? {}, club, guests, members, templates, meetings }
   })
 }
 export type AppData = NonNullable<ReturnType<typeof useAppData>>

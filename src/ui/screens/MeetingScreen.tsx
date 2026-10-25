@@ -4,15 +4,18 @@ import {
   ArrowDown,
   ArrowUp,
   BookmarkPlus,
+  CalendarCheck,
   CalendarPlus,
   ChevronDown,
   ChevronUp,
   Copy,
   GripVertical,
+  History,
   PencilLine,
   Play,
   Plus,
   Trash2,
+  Undo2,
   UserPlus,
 } from "lucide-react"
 import { isTimed, type AgendaItem, type AgendaRole, type Meeting, type Segment, type SegmentKind, type Template } from "../../domain"
@@ -63,6 +66,10 @@ export function MeetingScreen({ data, readOnly, open, notify }: { data: Data; re
   const update = (patch: Partial<Meeting>) => void repo.meetings.update(meeting.id, current => ({ ...current, ...patch }))
   const warnings = agendaWarnings(meeting)
   const editing = sheet?.type === "edit" ? orderedItems(meeting).find(item => item.id === sheet.itemId) : undefined
+  // A finished meeting is view-only: its report stays, but the agenda cannot be changed by mistake.
+  const finished = meeting.status === "finished"
+  const viewOnly = readOnly || finished
+  const pastMeetings = data.meetings.filter(other => other.id !== meeting.id)
 
   /** Hands the agenda, in this order, to the Timer: the first person not yet timed comes up first. */
   const startMeeting = async () => {
@@ -72,22 +79,54 @@ export function MeetingScreen({ data, readOnly, open, notify }: { data: Data; re
     open(first.id)
   }
 
+  const endMeeting = async () => {
+    if (!confirm("End this meeting? The report stays in Past meetings. You can reopen it if you need to.")) return
+    await repo.meetings.update(meeting.id, current => ({ ...current, status: "finished" }))
+    notify("Meeting ended. The report stays in Past meetings.")
+  }
+
+  const resumeMeeting = async () => {
+    await repo.meetings.update(meeting.id, current => ({ ...current, status: "live" }))
+    notify("Meeting reopened")
+  }
+
+  const switchTo = async (id: string, label: string) => {
+    await repo.settings.update({ currentMeetingId: id })
+    notify(`Switched to ${label}`)
+  }
+
   return (
     <section className="screen meeting-screen">
       <div className="screen-title">
         <div>
-          <span className="eyebrow">{data.club?.name ?? "Meeting"}</span>
+          <span className="eyebrow">
+            {data.club?.name ?? "Meeting"}
+            {finished && <span className="meeting-status-chip"> · Ended</span>}
+          </span>
           <h1>Meeting agenda</h1>
         </div>
-        <button className="secondary-button" onClick={() => setSheet({ type: "new" })} disabled={readOnly}>
-          <CalendarPlus size={18} aria-hidden="true" />
-          New meeting
-        </button>
+        <div className="screen-title-actions">
+          {finished ? (
+            <button className="secondary-button" onClick={() => void resumeMeeting()} disabled={readOnly}>
+              <Undo2 size={18} aria-hidden="true" />
+              Reopen meeting
+            </button>
+          ) : (
+            <button className="secondary-button" onClick={() => void endMeeting()} disabled={readOnly}>
+              <CalendarCheck size={18} aria-hidden="true" />
+              End meeting
+            </button>
+          )}
+          <button className="secondary-button" onClick={() => setSheet({ type: "new" })} disabled={readOnly}>
+            <CalendarPlus size={18} aria-hidden="true" />
+            New meeting
+          </button>
+        </div>
       </div>
       <section className="settings-card">
         <label>
           Date
-          <input type="date" value={meeting.date} onChange={event => update({ date: event.target.value })} disabled={readOnly} />
+          <input type="date" value={meeting.date} onChange={event => update({ date: event.target.value })} disabled={viewOnly} />
         </label>
         <label>
           Theme
@@ -95,7 +134,7 @@ export function MeetingScreen({ data, readOnly, open, notify }: { data: Data; re
             value={meeting.theme ?? ""}
             placeholder="Optional"
             onChange={event => update({ theme: event.target.value || undefined })}
-            disabled={readOnly}
+            disabled={viewOnly}
           />
         </label>
         <label>
@@ -104,7 +143,7 @@ export function MeetingScreen({ data, readOnly, open, notify }: { data: Data; re
             value={meeting.wordOfTheDay ?? ""}
             placeholder="Optional"
             onChange={event => update({ wordOfTheDay: event.target.value || undefined })}
-            disabled={readOnly}
+            disabled={viewOnly}
           />
         </label>
       </section>
@@ -132,7 +171,7 @@ export function MeetingScreen({ data, readOnly, open, notify }: { data: Data; re
             segment={segment}
             first={index === 0}
             last={index === meeting.segments.length - 1}
-            readOnly={readOnly}
+            readOnly={viewOnly}
             open={open}
             edit={itemId => setSheet({ type: "edit", itemId })}
             add={() => setSheet({ type: "add", segmentId: segment.id })}
@@ -141,16 +180,45 @@ export function MeetingScreen({ data, readOnly, open, notify }: { data: Data; re
         ))}
       </div>
 
-      <div className="meeting-actions">
-        <button className="primary-button" onClick={() => void startMeeting()} disabled={readOnly}>
-          <Play aria-hidden="true" />
-          Start meeting
-        </button>
-        <button className="secondary-button" onClick={() => setSheet({ type: "template" })} disabled={readOnly}>
-          <BookmarkPlus size={18} aria-hidden="true" />
-          Save as template
-        </button>
-      </div>
+      {!finished && (
+        <div className="meeting-actions">
+          <button className="primary-button" onClick={() => void startMeeting()} disabled={viewOnly}>
+            <Play aria-hidden="true" />
+            Start meeting
+          </button>
+          <button className="secondary-button" onClick={() => setSheet({ type: "template" })} disabled={viewOnly}>
+            <BookmarkPlus size={18} aria-hidden="true" />
+            Save as template
+          </button>
+        </div>
+      )}
+
+      {pastMeetings.length > 0 && (
+        <section className="past-meetings" aria-labelledby="past-meetings-title">
+          <h2 id="past-meetings-title">
+            <History size={18} aria-hidden="true" />
+            Past meetings
+          </h2>
+          <ul>
+            {pastMeetings.map(past => {
+              const items = past.segments.flatMap(segment => segment.items)
+              const label = past.theme ? `${past.date} · ${past.theme}` : past.date
+              const statusLabel = past.status === "finished" ? "Ended" : past.status === "live" ? "In progress" : "Draft"
+              return (
+                <li key={past.id}>
+                  <button className="past-meeting" onClick={() => void switchTo(past.id, label)}>
+                    <b>{label}</b>
+                    <small>
+                      {statusLabel}
+                      {items.length ? ` · ${items.length} ${items.length === 1 ? "item" : "items"}` : ""}
+                    </small>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      )}
 
       {sheet?.type === "add" && <ItemSheet data={data} segment={meeting.segments.find(s => s.id === sheet.segmentId)!} close={close} done={done} />}
       {editing && (
