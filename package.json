@@ -18,7 +18,8 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "check:secrets": "node scripts/check-secrets.mjs",
-    "dev:api": "vite build && wrangler pages dev dist --port 8788"
+    "dev:api": "vite build && wrangler pages dev dist --port 8788",
+    "eval:agendas": "vitest run --config vitest.eval.config.ts scripts/eval-agendas.test.ts"
   },
   "dependencies": {
     "@fontsource/inter": "5.3.0",
