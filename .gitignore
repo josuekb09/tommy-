@@ -20,3 +20,15 @@ playwright-report/
 
 # TypeScript build cache
 *.tsbuildinfo
+
+# Vite PWA dev service worker
+dev-dist/
+
+# Wrangler local state
+.wrangler/
+fixtures/
+
+# Agenda scan accuracy bench: raw model responses and run reports contain
+# real-member names from the fixtures and must stay local.
+.eval-cache/
+eval-results/

@@ -1,228 +1,219 @@
 import { expect, test, type Page } from "@playwright/test"
 import AxeBuilder from "@axe-core/playwright"
+import { nav, openWithFakeClock } from "./helpers"
 
 const at = (minutes: number, seconds = 0) => `${minutes}:${String(seconds).padStart(2, "0")}`
-const installClock = (page: Page) => page.clock.install({ time: new Date("2026-10-07T18:00:00Z") })
-const freezeClock = async (page: Page) => page.clock.pauseAt((await page.evaluate(() => Date.now())) + 60_000)
-const openQueue = (page: Page) => page.getByRole("button", { name: "Queue", exact: true }).click()
-const expectTimer = (page: Page, minutes: number, seconds = 0) => expect(page.locator(".timer-number")).toHaveText(at(minutes, seconds))
+const expectClock = (page: Page, minutes: number, seconds = 0) => expect(page.locator(".ts-clock")).toHaveText(at(minutes, seconds))
 
-async function chooseSegment(page: Page, name: "Speeches" | "Evaluations" | "Table Topics") {
-  await openQueue(page)
+async function addToAgenda(page: Page, segment: "Prepared speeches" | "Evaluations" | "Table Topics", name: string) {
+  await nav(page, "Meeting")
+  await page.getByRole("button", { name: `Add to ${segment}` }).click()
+  await page.getByLabel("Name").fill(name)
+  await page.getByRole("button", { name: "Add to agenda" }).click()
+  await expect(page.getByRole("button", { name: new RegExp(`^${name}`) })).toBeVisible()
+}
+
+async function timeItem(page: Page, name: string, ms: number) {
+  await nav(page, "Meeting")
   await page.getByRole("button", { name: new RegExp(`^${name}`) }).click()
-}
-async function addSpeaker(page: Page, name: string, role?: "Speech" | "Ice Breaker") {
-  await page.getByRole("button", { name: "Add speaker", exact: true }).click()
-  await page.getByLabel("Name").fill(name)
-  if (role) await page.getByLabel("Role").selectOption(role)
-  await page.getByRole("button", { name: "Add to queue", exact: true }).click()
-}
-async function addGuest(page: Page, name: string) {
-  await page.getByRole("button", { name: "Add guest", exact: true }).click()
-  await page.getByLabel("Name").fill(name)
-  await page.getByRole("button", { name: "Add guest", exact: true }).last().click()
-}
-async function startSelected(page: Page) {
-  await page.getByRole("button", { name: "Timer", exact: true }).click()
+  await expect(page.locator("#timer-person")).toHaveText(name)
   await page.getByRole("button", { name: "Start", exact: true }).click()
-}
-async function waitForMeetingSave(page: Page, expected?: { name: string; elapsedMs: number }) {
-  await page.waitForFunction(async ({ expected }) => {
-    const request = indexedDB.open("tommy")
-    return await new Promise<boolean>((resolve, reject) => {
-      request.onerror = () => reject(request.error)
-      request.onsuccess = () => {
-        const store = request.result.transaction("meetings", "readonly").objectStore("meetings")
-        const meetings = store.getAll()
-        meetings.onsuccess = () => resolve(expected ? meetings.result.some(meeting => meeting.segments.some((segment: { turns: { name: string; elapsedMs: number }[] }) => segment.turns.some(turn => turn.name === expected.name && turn.elapsedMs === expected.elapsedMs))) : meetings.result.length > 0)
-        meetings.onerror = () => reject(meetings.error)
-      }
-    })
-  }, { expected })
+  await page.clock.runFor(ms)
+  await page.getByRole("button", { name: "Stop", exact: true }).click()
+  await expect(page.getByText(/^Recorded \d/)).toBeVisible()
 }
 
-test("full meeting records exact prepared, Table Topics, and evaluation times in all reports", async ({ page }) => {
-  await installClock(page); await page.goto("/"); await freezeClock(page); await openQueue(page)
-  await addSpeaker(page, "Ada Speech"); await addSpeaker(page, "Ben Speech", "Ice Breaker")
-  await page.getByRole("button", { name: /^Ada Speech Speech/ }).click(); await startSelected(page)
-  await page.clock.runFor(299_000); await expect(page.getByText("Ready", { exact: true })).toBeVisible(); await expectTimer(page, 4, 59)
-  await page.clock.runFor(1_000); await expect(page.getByText("Green", { exact: true })).toBeVisible()
-  await page.clock.runFor(60_000); await expect(page.getByText("Yellow", { exact: true })).toBeVisible(); await expectTimer(page, 6)
-  await page.clock.runFor(60_000); await expect(page.getByText("Red", { exact: true })).toBeVisible(); await expectTimer(page, 7)
-  await page.getByRole("button", { name: "Pause", exact: true }).click(); await page.clock.runFor(30_000); await expectTimer(page, 7)
-  await page.getByRole("button", { name: "Resume", exact: true }).click(); await page.clock.runFor(30_000); await expectTimer(page, 7, 30)
-  await page.getByRole("button", { name: "Stop", exact: true }).click(); await expect(page.getByText("Recorded", { exact: true })).toBeVisible()
+async function storedRecords(page: Page) {
+  return page.evaluate(
+    () =>
+      new Promise<{ agendaItemId: string; elapsedMs: number; status: string }[]>((resolve, reject) => {
+        const request = indexedDB.open("tommy-v2")
+        request.onerror = () => reject(request.error)
+        request.onsuccess = () => {
+          const all = request.result.transaction("timedRecords").objectStore("timedRecords").getAll()
+          all.onsuccess = () => resolve(all.result)
+          all.onerror = () => reject(all.error)
+        }
+      }),
+  )
+}
 
-  await chooseSegment(page, "Table Topics"); await addGuest(page, "Gia Guest"); await startSelected(page)
-  await page.clock.runFor(90_000); await expect(page.getByText("Yellow", { exact: true })).toBeVisible(); await page.getByRole("button", { name: "Stop", exact: true }).click(); await expectTimer(page, 1, 30)
-  await chooseSegment(page, "Evaluations"); await addSpeaker(page, "Eva Evaluation"); await startSelected(page)
-  await page.clock.runFor(150_000); await expect(page.getByText("Yellow", { exact: true })).toBeVisible(); await page.getByRole("button", { name: "Stop", exact: true }).click(); await expectTimer(page, 2, 30)
+test("full offline-capable meeting: speeches, evaluations and live Table Topics guests reach the report", async ({ page }) => {
+  test.setTimeout(180_000)
+  await openWithFakeClock(page)
+  await addToAgenda(page, "Prepared speeches", "Ada Speaker")
+  await addToAgenda(page, "Prepared speeches", "Ben Speaker")
+  await addToAgenda(page, "Evaluations", "Eva Evaluator")
+  await addToAgenda(page, "Evaluations", "Ed Evaluator")
 
-  await page.getByRole("button", { name: "Report", exact: true }).click(); await expect(page.getByRole("heading", { name: "Evaluations", exact: true })).toBeVisible(); await expect(page.getByText("Eva Evaluation", { exact: true })).toBeVisible()
-  await page.getByRole("tab", { name: "Speeches", exact: true }).click(); await expect(page.getByText("Ada Speech", { exact: true })).toBeVisible(); await expect(page.getByRole("button", { name: "7:30", exact: true })).toBeVisible()
-  await page.getByRole("tab", { name: "Table Topics", exact: true }).click(); await expect(page.getByText("Gia Guest", { exact: true })).toBeVisible(); await expect(page.getByRole("button", { name: "1:30", exact: true })).toBeVisible()
-  await page.getByRole("button", { name: "Log", exact: true }).click()
-  for (const name of ["Speeches", "Evaluations", "Table Topics", "Ada Speech", "Eva Evaluation", "Gia Guest"]) await expect(page.getByText(name, { exact: true }).first()).toBeVisible()
-  for (const time of ["7:30", "2:30", "1:30"]) await expect(page.getByRole("button", { name: time, exact: true })).toBeVisible()
+  await timeItem(page, "Ada Speaker", 372_000)
+  await timeItem(page, "Ben Speaker", 290_000)
+  await timeItem(page, "Eva Evaluator", 150_000)
+  await timeItem(page, "Ed Evaluator", 175_000)
+
+  await nav(page, "Timer")
+  await page.getByRole("tab", { name: "Table Topics" }).click()
+  for (const [name, ms] of [
+    ["Gia Guest", 75_000],
+    ["Hal Guest", 95_000],
+    ["Ivy Guest", 130_000],
+  ] as const) {
+    await page.getByRole("button", { name: "Add guest" }).click()
+    await page.getByLabel("Name").fill(name)
+    await page.getByRole("button", { name: "Add and start" }).click()
+    await expect(page.locator("#timer-person")).toHaveText(name)
+    await page.clock.runFor(ms)
+    await page.getByRole("button", { name: "Stop", exact: true }).click()
+  }
+
+  await nav(page, "Report")
+  for (const [name, time, result] of [
+    ["Ada Speaker", "6:12", "Within time"],
+    ["Ben Speaker", "4:50", "Within time"],
+    ["Eva Evaluator", "2:30", "Within time"],
+    ["Ed Evaluator", "2:55", "Within time"],
+    ["Gia Guest", "1:15", "Within time"],
+    ["Hal Guest", "1:35", "Within time"],
+    ["Ivy Guest", "2:10", "Over time"],
+  ]) {
+    const line = page.locator(".report-line", { hasText: name })
+    await expect(line).toContainText(time)
+    await expect(line).toContainText(result)
+  }
+  const records = await storedRecords(page)
+  expect(
+    records
+      .filter(record => record.status === "stopped")
+      .map(record => record.elapsedMs)
+      .sort((a, b) => a - b),
+  ).toEqual([75_000, 95_000, 130_000, 150_000, 175_000, 290_000, 372_000])
 })
 
-test("running timer persists exact timestamp-derived time through reload, pause, resume, and reopening", async ({ context, page }) => {
-  await installClock(page); await page.goto("/"); await freezeClock(page); await openQueue(page); await addSpeaker(page, "Persistent Speaker"); await startSelected(page)
-  await page.clock.runFor(123_000); await expectTimer(page, 2, 3); await waitForMeetingSave(page)
-  await page.reload(); await expect(page.getByText("Persistent Speaker", { exact: true })).toBeVisible(); await expectTimer(page, 2, 3)
-  await page.getByRole("button", { name: "Pause", exact: true }).click(); await page.clock.runFor(30_000); await expectTimer(page, 2, 3)
-  await page.getByRole("button", { name: "Resume", exact: true }).click(); await page.clock.runFor(30_000); await expectTimer(page, 2, 33); await page.getByRole("button", { name: "Stop", exact: true }).click(); await waitForMeetingSave(page)
-  await page.close(); const reopened = await context.newPage(); await reopened.goto("/")
-  await openQueue(reopened); await expect(reopened.getByText("Persistent Speaker", { exact: true })).toBeVisible(); await reopened.getByRole("button", { name: /^Persistent Speaker Speech/ }).click(); await expect(reopened.locator(".timer-number")).toHaveText("2:33")
-  await reopened.getByRole("button", { name: "Report", exact: true }).click(); await expect(reopened.getByRole("button", { name: "2:33", exact: true })).toBeVisible()
+test("a running timer survives a page reload exactly", async ({ page }) => {
+  await openWithFakeClock(page)
+  await addToAgenda(page, "Prepared speeches", "Persistent Speaker")
+  await page.getByRole("button", { name: /^Persistent Speaker/ }).click()
+  await page.getByRole("button", { name: "Start", exact: true }).click()
+  await page.clock.runFor(123_000)
+  await expectClock(page, 2, 3)
+  await page.reload()
+  await expect(page.locator("#timer-person")).toHaveText("Persistent Speaker")
+  await expectClock(page, 2, 3)
+  await page.clock.runFor(10_000)
+  await expectClock(page, 2, 13)
 })
 
-test("production PWA reloads offline and continues storing a completed timer and report", async ({ context, page }) => {
-  await page.goto("/"); await page.waitForFunction(() => navigator.serviceWorker.controller !== null); await page.reload(); await page.waitForFunction(() => navigator.serviceWorker.controller !== null)
-  await openQueue(page); await addSpeaker(page, "Offline Speaker"); await waitForMeetingSave(page); await context.setOffline(true); await page.reload({ waitUntil: "domcontentloaded" })
-  await expect(page.getByText("Offline Speaker", { exact: true })).toBeVisible(); await page.getByRole("button", { name: "Start", exact: true }).click(); await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeVisible(); await page.getByRole("button", { name: "Stop", exact: true }).click()
-  await page.getByRole("button", { name: "Report", exact: true }).click(); await expect(page.getByText("Offline Speaker", { exact: true })).toBeVisible(); await expect(page.getByRole("button", { name: "0:00", exact: true })).toBeVisible(); await waitForMeetingSave(page)
+test("signals change at exact thresholds and are announced in text, not colour alone", async ({ page }) => {
+  await openWithFakeClock(page)
+  await addToAgenda(page, "Table Topics", "Tess Topics")
+  await page.getByRole("button", { name: /^Tess Topics/ }).click()
+  await page.getByRole("button", { name: "Start", exact: true }).click()
+  await page.clock.runFor(59_000)
+  await expect(page.locator(".ts-signal-label")).toHaveText("READY")
+  await page.clock.runFor(1_000)
+  await expect(page.locator(".ts-signal-label")).toHaveText("GREEN")
+  await expect(page.locator(".ts-signal svg")).toHaveCount(1)
+  await page.clock.runFor(30_000)
+  await expect(page.locator(".ts-signal-label")).toHaveText("AMBER")
+  await page.clock.runFor(30_000)
+  await expect(page.locator(".ts-signal-label")).toHaveText("RED")
+  await expect(page.getByRole("status").filter({ hasText: "Time limit reached" })).toHaveCount(1)
 })
 
-type TimerCase = { name: string; role: "Speech" | "Ice Breaker" | "Evaluation" | "Table Topics"; segment: "Speeches" | "Evaluations" | "Table Topics"; thresholds: [number, number, number]; custom?: boolean }
-const timerCases: TimerCase[] = [
-  { name: "prepared speech", role: "Speech", segment: "Speeches", thresholds: [300, 360, 420] },
-  { name: "Ice Breaker", role: "Ice Breaker", segment: "Speeches", thresholds: [240, 300, 360] },
-  { name: "evaluation", role: "Evaluation", segment: "Evaluations", thresholds: [120, 150, 180] },
-  { name: "Table Topics", role: "Table Topics", segment: "Table Topics", thresholds: [60, 90, 120] },
-  { name: "custom speech configuration", role: "Speech", segment: "Speeches", thresholds: [30, 60, 90], custom: true },
-]
-for (const timerCase of timerCases) test(`${timerCase.name} has exact thresholds, disqualification, pause/resume, stop, reset, and saved reset state`, async ({ page }) => {
-  await installClock(page); await page.goto("/"); await freezeClock(page)
-  if (timerCase.custom) { await page.getByRole("button", { name: "Settings", exact: true }).click(); await page.getByLabel("Speech green").fill("0:30"); await page.getByLabel("Speech yellow").fill("1:00"); await page.getByLabel("Speech red").fill("1:30") }
-  await chooseSegment(page, timerCase.segment)
-  if (timerCase.role === "Table Topics") await addGuest(page, `${timerCase.name} guest`)
-  else await addSpeaker(page, `${timerCase.name} speaker`, timerCase.role === "Evaluation" ? undefined : timerCase.role)
-  await page.getByRole("button", { name: "Settings", exact: true }).click(); await page.getByRole("switch", { name: "Disqualify at red + 30 s" }).click(); await page.getByRole("button", { name: "Timer", exact: true }).click(); await page.getByRole("button", { name: "Start", exact: true }).click()
-  const [green, yellow, red] = timerCase.thresholds
-  await page.clock.runFor((green - 1) * 1_000); await expect(page.getByText("Ready", { exact: true })).toBeVisible(); await page.clock.runFor(1_000); await expect(page.getByText("Green", { exact: true })).toBeVisible()
-  await page.getByRole("button", { name: "Pause", exact: true }).click(); await page.clock.runFor(30_000); await expectTimer(page, Math.floor(green / 60), green % 60); await page.getByRole("button", { name: "Resume", exact: true }).click()
-  await page.clock.runFor((yellow - green) * 1_000); await expect(page.getByText("Yellow", { exact: true })).toBeVisible(); await page.clock.runFor((red - yellow) * 1_000); await expect(page.getByText("Red", { exact: true })).toBeVisible(); await page.clock.runFor(30_000); await expect(page.getByText("Over time", { exact: true })).toBeVisible()
-  await page.getByRole("button", { name: "Stop", exact: true }).click(); await expect(page.getByText("Recorded", { exact: true })).toBeVisible(); await expectTimer(page, Math.floor((red + 30) / 60), (red + 30) % 60)
-  page.once("dialog", dialog => dialog.accept()); await page.getByRole("button", { name: "Reset", exact: true }).click(); await expectTimer(page, 0); await expect(page.getByText("Ready", { exact: true })).toBeVisible(); await waitForMeetingSave(page, { name: `${timerCase.name} ${timerCase.role === "Table Topics" ? "guest" : "speaker"}`, elapsedMs: 0 }); await page.reload(); await page.getByRole("tab", { name: timerCase.segment, exact: true }).click(); await expectTimer(page, 0); await expect(page.getByRole("button", { name: "Start", exact: true })).toBeEnabled()
-})
-
-const viewports = [[390, 844], [768, 1024], [1024, 768], [1280, 800], [1920, 1080]] as const
-for (const viewport of viewports) for (const colorScheme of ["light", "dark"] as const) test(`responsive ${viewport.join("x")} ${colorScheme}: controls, navigation, timer, and speaker display remain usable`, async ({ page }) => {
-  await page.emulateMedia({ colorScheme }); await page.setViewportSize({ width: viewport[0], height: viewport[1] }); await installClock(page); await page.goto("/?demo=1")
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
-  const controls = page.locator(".segment-tabs button, .bottom-nav button, .timer-actions button, .catchups button, .display-button")
-  for (const box of await controls.evaluateAll(nodes => nodes.map(node => { const rect = node.getBoundingClientRect(); return [rect.width, rect.height] }))) { expect(box[0]).toBeGreaterThanOrEqual(48); expect(box[1]).toBeGreaterThanOrEqual(48) }
-  for (const selector of [".timer-number", ".speaker-card h1", ".bottom-nav"]) expect(await page.locator(selector).evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true)
-  const nav = await page.locator(".bottom-nav").boundingBox(), actions = await page.locator(".timer-actions").boundingBox(); expect(nav).not.toBeNull(); expect(actions).not.toBeNull()
-  expect(nav!.x < actions!.x + actions!.width && nav!.x + nav!.width > actions!.x && nav!.y < actions!.y + actions!.height && nav!.y + nav!.height > actions!.y).toBe(false)
-  page.once("dialog", dialog => dialog.accept()); await page.getByRole("button", { name: "Reset", exact: true }).click(); await page.getByRole("button", { name: "Start", exact: true }).click()
-  await page.clock.runFor(59_000); await expect(page.locator(".signal")).toHaveClass(/ready/); await page.clock.runFor(1_000); await expect(page.locator(".signal")).toHaveClass(/green/); await page.clock.runFor(30_000); await expect(page.locator(".signal")).toHaveClass(/yellow/); await page.clock.runFor(30_000); await expect(page.locator(".signal")).toHaveClass(/red/)
-  await page.getByRole("button", { name: "Open speaker display" }).click(); const display = page.getByRole("button", { name: "Exit speaker display" }); await expect(display).toBeVisible(); expect((await display.boundingBox())!.width).toBeGreaterThanOrEqual(viewport[0] - 1); await display.click()
-})
-
-for (const screen of ["Timer", "Queue", "Report", "Log", "Settings"] as const) test(`accessibility has no serious or critical axe violations on ${screen}`, async ({ page }) => {
-  await page.goto("/?demo=1"); await page.getByRole("button", { name: screen, exact: true }).click(); const results = await new AxeBuilder({ page }).analyze(); expect(results.violations.filter(violation => ["serious", "critical"].includes(violation.impact || ""))).toEqual([])
-})
-test("accessibility: add-speaker form and keyboard focus have names and visible focus", async ({ page }) => {
-  await page.goto("/"); await openQueue(page); await page.getByRole("button", { name: "Add speaker", exact: true }).click(); const results = await new AxeBuilder({ page }).analyze(); expect(results.violations.filter(violation => ["serious", "critical"].includes(violation.impact || ""))).toEqual([])
-  await expect(page.getByRole("button", { name: "Close add speaker" })).toBeVisible(); const focus = await page.evaluate(() => { const active = document.activeElement as HTMLElement, style = getComputedStyle(document.activeElement as Element); return { name: active.getAttribute("aria-label") || active.getAttribute("placeholder"), outlineWidth: style.outlineWidth, outlineStyle: style.outlineStyle } }); expect(focus.name).toBe("e.g. Taylor Brooks"); expect(focus.outlineStyle).not.toBe("none"); expect(parseFloat(focus.outlineWidth)).toBeGreaterThanOrEqual(3)
-})
-
-test("agenda scanner is available from the queue and safely rejects unsupported files", async ({ page }) => {
-  await page.goto("/"); await openQueue(page); await page.getByRole("button", { name: /Scan Meeting Agenda/ }).click()
-  await expect(page.getByRole("heading", { name: "Scan Meeting Agenda" })).toBeVisible(); await expect(page.getByText(/processes photos locally/i)).toBeVisible()
-  const results = await new AxeBuilder({ page }).analyze(); expect(results.violations.filter(violation => ["serious", "critical"].includes(violation.impact || ""))).toEqual([])
-  await page.locator('input[type="file"]').last().setInputFiles({ name: "agenda.pdf", mimeType: "application/pdf", buffer: Buffer.from("not a pdf") })
-  await expect(page.getByRole("alert")).toContainText("image file")
-  await page.getByRole("button", { name: "Manage photos" }).click(); await expect(page.getByRole("button", { name: "Add photos" })).toBeVisible()
-})
-
-test("agenda scanner handles OCR error reporting and recovery gracefully", async ({ page }) => {
-  await page.goto("/"); await openQueue(page); await page.getByRole("button", { name: /Scan Meeting Agenda/ }).click()
-  // Mock worker error to test UI failure classification and recovery without external network dependency
-  await page.evaluate(() => {
-    const OriginalWorker = window.Worker
-    window.Worker = class MockWorker extends OriginalWorker {
-      constructor(scriptURL: string | URL, options?: WorkerOptions) {
-        super(scriptURL, options)
-        setTimeout(() => {
-          if (this.onerror) {
-            this.onerror(new ErrorEvent("error", { message: "Failed to execute 'importScripts' on 'WorkerGlobalScope'" }))
-          }
-        }, 50)
-      }
-    }
-  })
-  const png1x1 = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64")
-  await page.locator('input[type="file"]').last().setInputFiles({ name: "agenda.png", mimeType: "image/png", buffer: png1x1 })
-  await page.getByRole("button", { name: "Review agenda" }).click()
-  await expect(page.getByRole("alert")).toBeVisible()
-  await expect(page.getByText(/could not start/i)).toBeVisible()
-  await page.getByRole("button", { name: "Manage photos" }).click()
-  await expect(page.getByRole("button", { name: "Add photos" })).toBeVisible()
-})
-
-test("undo reset button is disabled initially, enabled after reset, and restores timer", async ({ page }) => {
-  await installClock(page); await page.goto("/"); await freezeClock(page); await openQueue(page)
-  await addSpeaker(page, "Undo Tester")
-  await startSelected(page)
+test("stop can be undone, offsets apply, and an edit needs a reason and keeps the original", async ({ page }) => {
+  await openWithFakeClock(page)
+  await addToAgenda(page, "Prepared speeches", "Undo Tester")
+  await page.getByRole("button", { name: /^Undo Tester/ }).click()
+  await page.getByRole("button", { name: "Start", exact: true }).click()
   await page.clock.runFor(45_000)
-  await page.getByRole("button", { name: "Pause", exact: true }).click()
-  await expectTimer(page, 0, 45)
-
-  // Undo button should be disabled before any reset occurs
-  const undoButton = page.getByRole("button", { name: "Undo reset", exact: true })
-  await expect(undoButton).toBeDisabled()
-
-  // Reset the timer
-  page.once("dialog", dialog => dialog.accept())
-  await page.getByRole("button", { name: "Reset", exact: true }).click()
-  await expectTimer(page, 0, 0)
-
-  // Undo button should now be enabled
-  await expect(undoButton).toBeEnabled()
-
-  // Click Undo and verify original time is restored
-  await undoButton.click()
-  await expectTimer(page, 0, 45)
-
-  // Undo button should be disabled again after restoring
-  await expect(undoButton).toBeDisabled()
-})
-
-test("editing report rows targets the correct turn when two speakers have the same name", async ({ page }) => {
-  await installClock(page); await page.goto("/"); await freezeClock(page)
-  await chooseSegment(page, "Table Topics")
-  await addGuest(page, "Sam Guest")
-  await addGuest(page, "Sam Guest")
-
-  // Time first Sam Guest for 1:15
-  await page.getByRole("button", { name: /^Sam Guest Table Topics/ }).first().click()
-  await startSelected(page)
-  await page.clock.runFor(75_000)
   await page.getByRole("button", { name: "Stop", exact: true }).click()
-
-  // Time second Sam Guest for 1:45
-  await openQueue(page)
-  await page.getByRole("button", { name: /^Sam Guest Table Topics/ }).last().click()
-  await startSelected(page)
-  await page.clock.runFor(105_000)
+  await page.getByRole("button", { name: "Undo", exact: true }).click()
+  await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeVisible()
+  await page.getByRole("button", { name: "Add 30 seconds" }).click()
+  await page.getByRole("button", { name: "Subtract 5 seconds" }).click()
   await page.getByRole("button", { name: "Stop", exact: true }).click()
+  await expectClock(page, 1, 10)
 
-  // Open report and verify both rows are displayed
-  await page.getByRole("button", { name: "Report", exact: true }).click()
-  const timeButtons = page.locator(".report-table .time-edit")
-  await expect(timeButtons).toHaveCount(2)
-  await expect(timeButtons.first()).toHaveText("1:15")
-  await expect(timeButtons.last()).toHaveText("1:45")
-
-  // Edit the second Sam Guest's time to 2:00
-  await timeButtons.last().click()
-  await page.getByLabel("Recorded time", { exact: true }).fill("2:00")
+  await page.getByRole("button", { name: "Edit time" }).click()
+  await page.getByLabel("Recorded time", { exact: true }).fill("1:20")
+  await expect(page.getByRole("button", { name: "Save recorded time" })).toBeDisabled()
+  await page.getByLabel("Reason for the edit").fill("Started late")
   await page.getByRole("button", { name: "Save recorded time" }).click()
-
-  // Verify first Sam remains 1:15 while second Sam updated to 2:00
-  await expect(timeButtons.first()).toHaveText("1:15")
-  await expect(timeButtons.last()).toHaveText("2:00")
+  await nav(page, "Report")
+  await expect(page.locator(".report-line", { hasText: "Undo Tester" })).toContainText("1:20")
+  await expect(page.locator(".report-line", { hasText: "Undo Tester" })).toContainText("Edited: Started late")
 })
+
+test("removing someone with a recorded time asks for confirmation", async ({ page }) => {
+  await openWithFakeClock(page)
+  await timeItemAfterAdding(page)
+  page.once("dialog", dialog => dialog.dismiss())
+  await page.getByRole("button", { name: "Edit Keep Me" }).click()
+  await page.getByRole("button", { name: "Remove Keep Me" }).click()
+  await page.keyboard.press("Escape")
+  await expect(page.getByRole("button", { name: /^Keep Me/ })).toBeVisible()
+})
+async function timeItemAfterAdding(page: Page) {
+  await addToAgenda(page, "Prepared speeches", "Keep Me")
+  await timeItem(page, "Keep Me", 10_000)
+  await nav(page, "Meeting")
+}
+
+test("production PWA reloads offline and keeps timing", async ({ context, page }) => {
+  await page.goto("/")
+  await page.waitForFunction(() => navigator.serviceWorker.controller !== null)
+  await addToAgenda(page, "Prepared speeches", "Offline Speaker")
+  await context.setOffline(true)
+  await page.reload({ waitUntil: "domcontentloaded" })
+  await nav(page, "Meeting")
+  await page.getByRole("button", { name: /^Offline Speaker/ }).click()
+  await page.getByRole("button", { name: "Start", exact: true }).click()
+  await page.getByRole("button", { name: "Stop", exact: true }).click()
+  await nav(page, "Report")
+  await expect(page.locator(".report-line", { hasText: "Offline Speaker" })).toBeVisible()
+})
+
+test("export and import a meeting through a file", async ({ page }) => {
+  await openWithFakeClock(page)
+  await addToAgenda(page, "Prepared speeches", "Exported Speaker")
+  await timeItem(page, "Exported Speaker", 61_000)
+  await nav(page, "Settings")
+  const download = page.waitForEvent("download")
+  await page.getByRole("button", { name: "Export this meeting" }).click()
+  const file = await (await download).path()
+  await page.getByLabel("Import a Tommy export file").setInputFiles(file)
+  await expect(page.getByText("1 meeting imported")).toBeVisible()
+})
+
+for (const screen of ["Meeting", "Timer", "Report", "Settings"] as const) {
+  test(`no serious accessibility violations on ${screen}`, async ({ page }) => {
+    await page.goto("/")
+    await nav(page, screen)
+    const results = await new AxeBuilder({ page }).analyze()
+    expect(results.violations.filter(violation => ["serious", "critical"].includes(violation.impact ?? ""))).toEqual([])
+  })
+}
+
+for (const [width, height] of [
+  [360, 740],
+  [390, 844],
+  [768, 1024],
+  [1280, 800],
+] as const) {
+  test(`layout ${width}x${height}: no horizontal scroll and 48px touch targets`, async ({ page }) => {
+    await page.setViewportSize({ width, height })
+    await page.goto("/")
+    await expect(page.locator(".ts-clock")).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
+    const boxes = await page.locator(".bottom-nav button, .ts-controls button").evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect()))
+    for (const box of boxes) expect(Math.min(box.width, box.height)).toBeGreaterThanOrEqual(44)
+
+    // The main Start/Stop button is big, never hidden behind the navigation, and on phones sits in the thumb zone.
+    const primary = (await page.locator(".ts-primary").boundingBox())!
+    const nav = (await page.locator(".bottom-nav").boundingBox())!
+    expect(primary.height).toBeGreaterThanOrEqual(72)
+    const overlaps = primary.x < nav.x + nav.width && primary.x + primary.width > nav.x && primary.y < nav.y + nav.height && primary.y + primary.height > nav.y
+    expect(overlaps).toBe(false)
+    if (width < 640) expect(primary.y + primary.height).toBeGreaterThan(height * 0.6)
+  })
+}

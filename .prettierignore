@@ -1,0 +1,10 @@
+dist
+dev-dist
+design
+node_modules
+test-results
+playwright-report
+package-lock.json
+hardware
+*.md
+fixtures

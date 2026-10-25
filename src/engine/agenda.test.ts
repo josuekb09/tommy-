@@ -1,383 +1,197 @@
 import { describe, expect, it } from "vitest"
-import { mergeAgendaDrafts, mergeAgendaIntoMeeting, parseAgenda, type AgendaDraft } from "./agenda"
-import { defaultSettings, type Meeting } from "./types"
+import type { AgendaItem, AgendaRole, Meeting, SegmentKind } from "../domain"
+import {
+  agendaWarnings,
+  duplicateLast,
+  participantTiming,
+  segmentTitle,
+  timedItems,
+  evaluatingLabel,
+  insertItem,
+  moveItem,
+  moveSegment,
+  nextInOrder,
+  orderedItems,
+  personLabel,
+  queueOf,
+} from "./agenda"
+import { defaultRules, profileFor } from "./profiles"
 
-describe("parseAgenda", () => {
-  it("extracts a clearly formatted Toastmasters agenda conservatively", () => {
-    const draft = parseAgenda("Riverside Toastmasters Meeting Agenda\nOctober 9, 2026\n5. Speech — Ada Lovelace — A Better Algorithm — 7 min\nEvaluator: Grace Hopper — 3 min\nTable Topics Speaker: Linus Torvalds — 2 min")
-    expect(draft.title).toContain("Toastmasters")
-    expect(draft.date).toBe("October 9, 2026")
-    expect(draft.items.map(item => [item.role, item.name, item.durationSeconds])).toEqual([["Speech", "Ada Lovelace", 420], ["Evaluation", "Grace Hopper", 180], ["Table Topics", "Linus Torvalds", 120]])
-  })
-  it("handles alternative role/name layouts and missing durations", () => {
-    const draft = parseAgenda("Ice Breaker: Maya Angelou\nSpeech by James Baldwin\nEvaluation | Toni Morrison")
-    expect(draft.items.map(item => [item.role, item.name, item.durationSeconds])).toEqual([["Ice Breaker", "Maya Angelou", undefined], ["Speech", "James Baldwin", undefined], ["Evaluation", "Toni Morrison", undefined]])
-  })
-  it("flags missing names and titles instead of inventing them", () => {
-    const draft = parseAgenda("Speech — 5 min\nEvaluation — 3 min")
-    expect(draft.items).toHaveLength(2)
-    expect(draft.items.every(item => item.name === "" && item.uncertain.length > 0)).toBe(true)
-  })
-  it("keeps malformed and unknown-role lines out of the import draft", () => {
-    const draft = parseAgenda("Welcome everyone\nMystery slot: Pat Example\nSpeech???")
-    expect(draft.items).toHaveLength(1)
-    expect(draft.items[0].role).toBe("Speech")
-    expect(draft.items[0].name).toBe("")
-  })
-  it("reports empty OCR output", () => {
-    const draft = parseAgenda("   ")
-    expect(draft.items).toEqual([])
-    expect(draft.warnings[0]).toMatch(/No readable text/)
-  })
-  it("keeps Ice Breakers in speeches and retains evaluator associations", () => {
-    const draft = parseAgenda("Alice — Ice Breaker Speaker\nBob — Evaluator for Alice\nCharlie — Prepared Speech Speaker\nDavid — Evaluator for Charlie\nEmma — General Evaluator")
-    expect(draft.items.map(item => [item.role, item.name, item.segment, item.title])).toEqual([
-      ["Ice Breaker", "Alice", "speeches", ""],
-      ["Evaluation", "Bob", "evaluations", "Evaluates Alice"],
-      ["Speech", "Charlie", "speeches", ""],
-      ["Evaluation", "David", "evaluations", "Evaluates Charlie"]
-    ])
-  })
-  it("combines pages in selected order and removes duplicate assignments", () => {
-    const front = parseAgenda("Speech — Ada Lovelace — 7 min\nEvaluation — Grace Hopper")
-    const back = parseAgenda("Evaluation — Grace Hopper\nTable Topics Speaker — Linus Torvalds")
-    const merged = mergeAgendaDrafts([front, back])
-    expect(merged.items.map(item => [item.name, item.role])).toEqual([
-      ["Ada Lovelace", "Speech"], ["Grace Hopper", "Evaluation"], ["Linus Torvalds", "Table Topics"]
-    ])
-    expect(merged.originalText).toMatch(/^Page 1/)
-  })
-  it("strictly classifies the two-page ToastED agenda by role and preserves row thresholds", () => {
-    const pageOne = parseAgenda(`ToastED meeting agenda
-18:15 | Toastmaster | Eugene Asem | 0:00
-18:58 | 1st Speaker | Kim Austen | 4:00 | 5:00 | 6:00
-19:05 | 2nd Speaker | Christina Thomas | 5:00 | 6:00 | 7:00
-19:13 | 3rd Speaker | Chris Adlam | 5:00 | 6:00 | 7:00
-President | Michaela Geldhof | 2:00
-Timekeeper | Josue Kabuya | 1:00
-Educational Speaker | Michaela Geldhof | 15:00`)
-    const pageTwo = parseAgenda(`1st Evaluator | Michaela Geldhof | — | — | 1:00
-2nd Evaluator | Titus Magua | — | — | 1:00
-3rd Evaluator | Andrea Baptista | — | — | 1:00
-Table Topics Master | Philip Townsend | 1:00 | 1:30 | 2:00
-General Evaluator | Someone Else | 5:00
-Um, Er Counter | Maria van Rooyen | 1:00
-Grammarian | Fulu Nemaitoni | 1:00
-1st Evaluator | Michaela Geldhof | 2:00 | 2:30 | 3:00
-2nd Evaluator | Titus Magua | 2:00 | 2:30 | 3:00
-3rd Evaluator | Andrea Baptista | 2:00 | 2:30 | 3:00`)
-    const draft = mergeAgendaDrafts([pageOne, pageTwo])
-
-    expect(draft.items.filter(item => item.segment === "speeches").map(item => [item.name, item.thresholds])).toEqual([
-      ["Kim Austen", { green: 240, yellow: 300, red: 360 }],
-      ["Christina Thomas", { green: 300, yellow: 360, red: 420 }],
-      ["Chris Adlam", { green: 300, yellow: 360, red: 420 }]
-    ])
-    expect(draft.items.filter(item => item.segment === "evaluations").map(item => [item.name, item.thresholds])).toEqual([
-      ["Michaela Geldhof", { green: 60, yellow: 60, red: 60 }], ["Titus Magua", { green: 60, yellow: 60, red: 60 }], ["Andrea Baptista", { green: 60, yellow: 60, red: 60 }]
-    ])
-    expect(draft.items.filter(item => item.segment === "tableTopics").map(item => [item.name, item.thresholds])).toEqual([["Philip Townsend", { green: 60, yellow: 90, red: 120 }]])
-    expect(draft.items.map(item => item.name)).not.toEqual(expect.arrayContaining(["Eugene Asem", "Josue Kabuya", "Maria van Rooyen", "Fulu Nemaitoni"]))
-  })
+const item = (id: string, role: AgendaRole, personName: string, extra: Partial<AgendaItem> = {}): AgendaItem => ({
+  id,
+  order: 0,
+  role,
+  personName,
+  timing: profileFor(role, defaultRules),
+  ...extra,
 })
 
-describe("mergeAgendaIntoMeeting", () => {
-  const baseMeeting: Meeting = {
-    id: "m-1",
-    title: "Original Meeting",
-    date: "2026-10-09",
-    segments: [
-      {
-        id: "s-speeches",
-        type: "speeches",
-        turns: [
-          {
-            id: "t-completed",
-            name: "Alice Speaker",
-            role: "Speech",
-            thresholds: { green: 300, yellow: 360, red: 420 },
-            status: "done",
-            elapsedMs: 345000,
-            note: "Great delivery"
-          },
-          {
-            id: "t-running",
-            name: "Bob Running",
-            role: "Speech",
-            thresholds: { green: 300, yellow: 360, red: 420 },
-            status: "running",
-            startedAt: 1000,
-            elapsedMs: 50000
-          },
-          {
-            id: "t-queued",
-            name: "Charlie Queued",
-            role: "Speech",
-            thresholds: { green: 300, yellow: 360, red: 420 },
-            status: "queued",
-            elapsedMs: 0
-          }
-        ]
-      },
-      {
-        id: "s-evaluations",
-        type: "evaluations",
-        turns: []
-      },
-      {
-        id: "s-topics",
-        type: "tableTopics",
-        turns: []
-      }
-    ]
+function meeting(...segments: [SegmentKind, AgendaItem[]][]): Meeting {
+  return {
+    id: "m",
+    date: "2026-10-24",
+    status: "draft",
+    createdAt: 0,
+    updatedAt: 0,
+    segments: segments.map(([kind, items]) => ({ id: kind, kind, items: items.map((it, order) => ({ ...it, order })) })),
   }
+}
 
-  const sampleDraft: AgendaDraft = {
-    title: "Scanned Agenda Meeting",
-    date: "2026-10-10",
-    originalText: "Scanned text",
-    warnings: [],
-    items: [
-      {
-        id: "item-1",
-        name: "Dana New",
-        role: "Speech",
-        title: "Future of AI",
-        durationSeconds: 420,
-        segment: "speeches",
-        uncertain: [],
-        source: "Speech Dana"
-      },
-      {
-        id: "item-2",
-        name: "Eve Evaluator",
-        role: "Evaluation",
-        title: "",
-        durationSeconds: 180,
-        segment: "evaluations",
-        uncertain: [],
-        source: "Evaluation Eve"
-      }
-    ]
-  }
+const names = (m: Meeting) => orderedItems(m).map(personLabel)
 
-  it("never deletes completed turns with recorded times or running turns in Replace mode", () => {
-    let idCounter = 100
-    const merged = mergeAgendaIntoMeeting(baseMeeting, sampleDraft, defaultSettings, "replace", {
-      idGenerator: () => `gen-${++idCounter}`
-    })
+describe("meeting order", () => {
+  const m = meeting(
+    ["prepared_speeches", [item("s1", "Speaker", "Ada"), item("s2", "Speaker", "Ben")]],
+    ["table_topics", [item("t1", "TableTopicsSpeaker", "Gia", { guest: true })]],
+    ["evaluations", [item("e1", "Evaluator", "Eva", { evaluatesItemId: "s1" })]],
+  )
 
-    const speeches = merged.segments.find(s => s.type === "speeches")!.turns
-
-    // Completed turn must remain intact with all timings and notes
-    const completedTurn = speeches.find(t => t.id === "t-completed")
-    expect(completedTurn).toBeDefined()
-    expect(completedTurn?.status).toBe("done")
-    expect(completedTurn?.elapsedMs).toBe(345000)
-    expect(completedTurn?.note).toBe("Great delivery")
-
-    // Running turn must remain intact
-    const runningTurn = speeches.find(t => t.id === "t-running")
-    expect(runningTurn).toBeDefined()
-    expect(runningTurn?.status).toBe("running")
-    expect(runningTurn?.startedAt).toBe(1000)
-    expect(runningTurn?.elapsedMs).toBe(50000)
-
-    // Unstarted queued turn should have been replaced
-    expect(speeches.find(t => t.id === "t-queued")).toBeUndefined()
-
-    // Newly imported speech turn should be present
-    const newTurn = speeches.find(t => t.name === "Dana New")
-    expect(newTurn).toBeDefined()
-    expect(newTurn?.role).toBe("Speech")
-    expect(newTurn?.note).toContain("Speech title: Future of AI")
+  it("runs segment by segment, items by their order", () => {
+    expect(names(m)).toEqual(["Ada", "Ben", "Gia", "Eva"])
   })
 
-  it("preserves existing queued turns when appending a new agenda", () => {
-    let idCounter = 200
-    const merged = mergeAgendaIntoMeeting(baseMeeting, sampleDraft, defaultSettings, "append", {
-      idGenerator: () => `gen-${++idCounter}`
-    })
+  it("moves an item within its segment and renumbers", () => {
+    const moved = moveItem(m, "s2", 0)
+    expect(names(moved)).toEqual(["Ben", "Ada", "Gia", "Eva"])
+    expect(moved.segments[0].items.map(i => i.order)).toEqual([0, 1])
+    expect(names(moveItem(m, "s1", 99))).toEqual(["Ben", "Ada", "Gia", "Eva"])
+  })
 
-    const speeches = merged.segments.find(s => s.type === "speeches")!.turns
-    expect(speeches.map(t => t.name)).toEqual([
-      "Alice Speaker",
-      "Bob Running",
-      "Charlie Queued",
-      "Dana New"
+  it("moves a whole segment, and ignores a move past either end", () => {
+    expect(names(moveSegment(m, "evaluations", -1))).toEqual(["Ada", "Ben", "Eva", "Gia"])
+    expect(moveSegment(m, "prepared_speeches", -1)).toBe(m)
+    expect(moveSegment(m, "evaluations", 1)).toBe(m)
+  })
+
+  it("inserts just before another item, or at the end", () => {
+    const brief = item("b1", "EvaluatorBrief", "Eva", { evaluatesItemId: "s2" })
+    expect(names(insertItem(m, "prepared_speeches", brief, "s2"))).toEqual(["Ada", "Eva", "Ben", "Gia", "Eva"])
+    expect(names(insertItem(m, "prepared_speeches", brief))).toEqual(["Ada", "Ben", "Eva", "Gia", "Eva"])
+  })
+
+  it("finds who is next across segments, wrapping back to anyone skipped", () => {
+    const waiting = (done: string[]) => (i: AgendaItem) => !done.includes(i.id)
+    expect(nextInOrder(m, undefined, waiting([]))?.id).toBe("s1")
+    expect(nextInOrder(m, "s2", waiting(["s1", "s2"]))?.id).toBe("t1")
+    expect(nextInOrder(m, "t1", waiting(["s1", "s2", "t1"]))?.id).toBe("e1")
+    expect(nextInOrder(m, "e1", waiting(["s2", "t1", "e1"]))?.id).toBe("s1")
+    expect(nextInOrder(m, "e1", waiting(["s1", "s2", "t1", "e1"]))).toBeUndefined()
+  })
+
+  it("labels an empty template slot by its role", () => {
+    expect(personLabel(item("x", "Evaluator", "  "))).toBe("Evaluator")
+  })
+})
+
+describe("evaluator pairing", () => {
+  it("shows who an evaluator and their brief are evaluating", () => {
+    const m = meeting(
+      ["prepared_speeches", [item("b1", "EvaluatorBrief", "Eva", { evaluatesItemId: "s1" }), item("s1", "Speaker", "Ada")]],
+      ["evaluations", [item("e1", "Evaluator", "Eva", { evaluatesItemId: "s1" })]],
+    )
+    expect(evaluatingLabel(m, orderedItems(m)[0])).toBe("Evaluating: Ada")
+    expect(evaluatingLabel(m, orderedItems(m)[2])).toBe("Evaluating: Ada")
+    expect(evaluatingLabel(m, orderedItems(m)[1])).toBeUndefined()
+    // Brief and evaluation are two items for one person.
+    expect(agendaWarnings(m)).toEqual([])
+  })
+
+  it("warns about unpaired evaluators, speakers without one, double pairings and a brief by someone else", () => {
+    const m = meeting(
+      [
+        "prepared_speeches",
+        [
+          item("s1", "Speaker", "Ada"),
+          item("s2", "Speaker", "Ben"),
+          item("b3", "EvaluatorBrief", "Zed", { evaluatesItemId: "s3" }),
+          item("s3", "Speaker", "Cy"),
+        ],
+      ],
+      [
+        "evaluations",
+        [
+          item("e1", "Evaluator", "Eva", { evaluatesItemId: "s1" }),
+          item("e2", "Evaluator", "Ed", { evaluatesItemId: "s1" }),
+          item("e3", "Evaluator", "Flo"),
+          item("e4", "Evaluator", "Gus", { evaluatesItemId: "removed" }),
+          item("e5", "Evaluator", "Hal", { evaluatesItemId: "s3" }),
+        ],
+      ],
+    )
+    expect(agendaWarnings(m).map(w => w.message)).toEqual([
+      "Flo (evaluator) is not paired with a speaker.",
+      "Gus (evaluator) is not paired with a speaker.",
+      "Ada has 2 evaluators: Eva and Ed.",
+      "No evaluator for Ben.",
+      "The brief before Cy's speech is by Zed, but Hal evaluates it.",
     ])
-
-    const evals = merged.segments.find(s => s.type === "evaluations")!.turns
-    expect(evals.map(t => t.name)).toEqual(["Eve Evaluator"])
-  })
-
-  it("prevents duplicate turns when imported item matches existing name and role", () => {
-    const draftWithDupes: AgendaDraft = {
-      title: "Dupe Agenda",
-      date: "",
-      originalText: "",
-      warnings: [],
-      items: [
-        {
-          id: "dup-1",
-          name: "Alice Speaker",
-          role: "Speech",
-          title: "",
-          segment: "speeches",
-          uncertain: [],
-          source: "Alice"
-        },
-        {
-          id: "new-1",
-          name: "Frank New",
-          role: "Speech",
-          title: "",
-          segment: "speeches",
-          uncertain: [],
-          source: "Frank"
-        }
-      ]
-    }
-
-    const merged = mergeAgendaIntoMeeting(baseMeeting, draftWithDupes, defaultSettings, "append")
-    const speeches = merged.segments.find(s => s.type === "speeches")!.turns
-
-    // Alice Speaker should appear exactly once
-    const alices = speeches.filter(t => t.name.toLowerCase() === "alice speaker")
-    expect(alices).toHaveLength(1)
-    expect(alices[0].id).toBe("t-completed")
-
-    // Frank New should be appended
-    expect(speeches.some(t => t.name === "Frank New")).toBe(true)
-  })
-  it("imports each reviewed assignment into its existing timer segment", () => {
-    const fresh = { ...baseMeeting, segments: baseMeeting.segments.map(segment => ({ ...segment, turns: [] })) }
-    const draft = parseAgenda("Alice — Ice Breaker Speaker\nBob — Evaluator for Alice\nCharlie — Prepared Speech Speaker\nDavid — Evaluator for Charlie\nTable Topics Speaker — Gail Guest")
-    const merged = mergeAgendaIntoMeeting(fresh, draft, defaultSettings, "append", { idGenerator: (() => { let id = 0; return () => `new-${++id}` })() })
-    expect(merged.segments.find(segment => segment.type === "speeches")?.turns.map(turn => [turn.name, turn.role])).toEqual([["Alice", "Ice Breaker"], ["Charlie", "Speech"]])
-    expect(merged.segments.find(segment => segment.type === "evaluations")?.turns.map(turn => [turn.name, turn.note])).toEqual([["Bob", "Speech title: Evaluates Alice"], ["David", "Speech title: Evaluates Charlie"]])
-    expect(merged.segments.find(segment => segment.type === "tableTopics")?.turns.map(turn => turn.name)).toEqual(["Gail Guest"])
-  })
-
-  it("preserves meeting title and date when historical turns are already recorded unless replace is chosen", () => {
-    const appendMerged = mergeAgendaIntoMeeting(baseMeeting, sampleDraft, defaultSettings, "append")
-    expect(appendMerged.title).toBe("Original Meeting")
-    expect(appendMerged.date).toBe("2026-10-09")
-
-    const freshMeeting: Meeting = {
-      id: "fresh-1",
-      title: "New Meeting",
-      date: "2026-10-09",
-      segments: [
-        { id: "s1", type: "speeches", turns: [] },
-        { id: "s2", type: "evaluations", turns: [] },
-        { id: "s3", type: "tableTopics", turns: [] }
-      ]
-    }
-    const freshMerged = mergeAgendaIntoMeeting(freshMeeting, sampleDraft, defaultSettings, "append")
-    expect(freshMerged.title).toBe("Scanned Agenda Meeting")
-    expect(freshMerged.date).toBe("2026-10-10")
   })
 })
 
-describe("classifyOcrError", () => {
-  it("identifies worker initialization and CSP errors", async () => {
-    const { classifyOcrError } = await import("./agenda")
+describe("duplicate the last item", () => {
+  const m = meeting(
+    ["prepared_speeches", [item("s1", "Speaker", "Ada"), item("s2", "Speaker", "Ben", { speechTitle: "Bridges", profileId: "speech_8_10", personId: "p" })]],
+    ["evaluations", [item("e1", "Evaluator", "Eva", { evaluatesItemId: "s1", profileId: "evaluation" })]],
+    ["reports", []],
+  )
 
-    // The exact error discovered on Cloudflare Pages preview
-    const cspWorkerError = "Failed to execute 'importScripts' on 'WorkerGlobalScope': The script at 'https://cdn.jsdelivr.net/npm/tesseract.js@v7.0.0/dist/worker.min.js' failed to load."
-    const result1 = classifyOcrError(cspWorkerError, { stage: "worker-init" })
-    expect(result1.kind).toBe("worker-init")
-    expect(result1.userMessage).toContain("could not start")
-    expect(result1.logMessage).toContain("Worker initialization failure")
-
-    // Empty string rejection from worker.onerror event
-    const result2 = classifyOcrError("", { stage: "worker-init" })
-    expect(result2.kind).toBe("worker-init")
-    expect(result2.userMessage).toContain("could not start")
-
-    // WASM compilation without wasm-unsafe-eval
-    const wasmError = new Error("WebAssembly.instantiate(): Refused to compile or instantiate WebAssembly module because 'wasm-unsafe-eval' is not an allowed source")
-    const result3 = classifyOcrError(wasmError, { stage: "loading-core" })
-    expect(result3.kind).toBe("worker-init")
-
-    // Core load failure
-    const coreError = new Error("Failed to load TesseractCore")
-    const result4 = classifyOcrError(coreError, { stage: "loading-core" })
-    expect(result4.kind).toBe("worker-init")
+  it("copies the role, profile and timing, never the person or title", () => {
+    expect(duplicateLast(m, "prepared_speeches")).toEqual({ role: "Speaker", personName: "", profileId: "speech_8_10", timing: m.segments[0].items[1].timing })
   })
 
-  it("identifies language file download errors", async () => {
-    const { classifyOcrError } = await import("./agenda")
-
-    const netError = new Error("Network error while fetching https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz. Response code: 404")
-    const result1 = classifyOcrError(netError, { stage: "loading-lang" })
-    expect(result1.kind).toBe("lang-download")
-    expect(result1.userMessage).toContain("download the English OCR language model")
-    expect(result1.userMessage).toContain("internet connection")
-
-    const fetchError = "TypeError: Failed to fetch"
-    const result2 = classifyOcrError(fetchError, { stage: "loading-lang" })
-    expect(result2.kind).toBe("lang-download")
+  it("pairs a copied evaluator with the next speech that has no evaluator", () => {
+    expect(duplicateLast(m, "evaluations")?.evaluatesItemId).toBe("s2")
+    const full = meeting(
+      ...m.segments.map(
+        s => [s.kind, s.id === "evaluations" ? [...s.items, item("e2", "Evaluator", "Ed", { evaluatesItemId: "s2" })] : s.items] as [SegmentKind, AgendaItem[]],
+      ),
+    )
+    expect(duplicateLast(full, "evaluations")?.evaluatesItemId).toBeUndefined()
   })
 
-  it("identifies OCR recognition runtime errors", async () => {
-    const { classifyOcrError } = await import("./agenda")
-
-    const memError = new Error("Canvas allocation failed: out of memory")
-    const result1 = classifyOcrError(memError, { stage: "recognizing" })
-    expect(result1.kind).toBe("runtime")
-    expect(result1.userMessage).toContain("Could not process this image file")
-
-    const imageError = new Error("loadImage failed to decode buffer")
-    const result2 = classifyOcrError(imageError, { stage: "recognizing" })
-    expect(result2.kind).toBe("runtime")
-  })
-
-  it("identifies genuinely unreadable images with zero extracted text", async () => {
-    const { classifyOcrError } = await import("./agenda")
-
-    const result = classifyOcrError(null, { stage: "recognizing", hasText: false })
-    expect(result.kind).toBe("unreadable")
-    expect(result.userMessage).toContain("could not read any text from that image")
-    expect(result.userMessage).toContain("brighter, sharper photo")
-  })
-
-  it("never exposes sensitive personal data or file paths in user-facing error messages", async () => {
-    const { classifyOcrError } = await import("./agenda")
-
-    const sensitiveMessage = new Error("Sensitive error parsing /Users/secret/John_Doe_Confidential_Agenda.jpg")
-    const result = classifyOcrError(sensitiveMessage, { stage: "recognizing" })
-    expect(result.userMessage).not.toContain("John_Doe")
-    expect(result.userMessage).not.toContain("Confidential")
-    expect(result.userMessage).not.toContain("/Users/secret")
+  it("has nothing to copy in an empty segment", () => {
+    expect(duplicateLast(m, "reports")).toBeUndefined()
   })
 })
 
-describe("public/_headers Content-Security-Policy", () => {
-  it("includes all necessary permissions for Tesseract.js worker, core, wasm, and fonts", async () => {
-    const fs: any = await import(/* @vite-ignore */ "node" + ":fs")
-    const headersUrl = new URL("../../public/_headers", import.meta.url)
-    const content: string = fs.readFileSync(headersUrl, "utf-8")
+describe("queue", () => {
+  const m = meeting(
+    ["prepared_speeches", [item("s1", "Speaker", "Ada"), item("s2", "Speaker", "Ben")]],
+    ["table_topics", [item("t1", "TableTopicsSpeaker", "Gia")]],
+    ["evaluations", [item("e1", "Evaluator", "Eva")]],
+  )
+  const done = (ids: string[]) => (i: AgendaItem) => ids.includes(i.id)
+  const ids = (items: AgendaItem[]) => items.map(i => i.id)
 
-    const cspLine = content.split("\n").find((line: string) => line.includes("Content-Security-Policy:"))
-    expect(cspLine).toBeDefined()
+  it("splits the meeting into done, on now and still to come, in agenda order", () => {
+    const queue = queueOf(m, "t1", done(["s1", "s2"]))
+    expect([ids(queue.done), queue.current?.id, ids(queue.upcoming)]).toEqual([["s1", "s2"], "t1", ["e1"]])
+  })
 
-    // Must allow scripts from cdn.jsdelivr.net and blob: for importScripts in Web Worker
-    expect(cspLine).toMatch(/script-src[^;]*https:\/\/cdn\.jsdelivr\.net/)
-    expect(cspLine).toMatch(/script-src[^;]*blob:/)
+  it("keeps a skipped person in the upcoming list", () => {
+    const queue = queueOf(m, "e1", done(["s1", "t1"]))
+    expect([ids(queue.done), ids(queue.upcoming)]).toEqual([["s1", "t1"], ["s2"]])
+    expect(queueOf(m, undefined, done([])).current).toBeUndefined()
+  })
+})
 
-    // Must allow WebAssembly instantiation via wasm-unsafe-eval
-    expect(cspLine).toMatch(/script-src[^;]*'wasm-unsafe-eval'/)
+describe("agenda-only lines and imported segments", () => {
+  const m = meeting(
+    ["opening", [item("intro", "Grammarian", "Gus", { timed: false }), item("tm", "Toastmaster", "Tess")]],
+    ["prepared_speeches", [item("s1", "Speaker", "Ada")]],
+    ["table_topics", [item("ttm", "TableTopicsMaster", "Tia", { timed: false })]],
+  )
 
-    // Must allow Web Workers from blob: and cdn.jsdelivr.net
-    expect(cspLine).toMatch(/worker-src[^;]*blob:/)
-    expect(cspLine).toMatch(/worker-src[^;]*https:\/\/cdn\.jsdelivr\.net/)
+  it("leaves agenda-only lines out of what the Timer times", () => {
+    expect(timedItems(m).map(i => i.id)).toEqual(["tm", "s1"])
+  })
 
-    // Must allow network requests to cdn.jsdelivr.net for .wasm and .traineddata.gz
-    expect(cspLine).toMatch(/connect-src[^;]*https:\/\/cdn\.jsdelivr\.net/)
-
-    // Must allow font data URIs
-    expect(cspLine).toMatch(/font-src[^;]*data:/)
+  it("uses a printed segment title and the printed Table Topics timing", () => {
+    expect(segmentTitle({ kind: "other", title: "Closing" })).toBe("Closing")
+    expect(segmentTitle({ kind: "reports" })).toBe("Reports")
+    expect(participantTiming(m, defaultRules)).toMatchObject({ profileId: "table_topics", timing: { green: 60, red: 120 } })
+    const printed = { ...profileFor("TableTopicsSpeaker", defaultRules), red: 150 }
+    const withPrinted = { ...m, segments: m.segments.map(s => (s.kind === "table_topics" ? { ...s, participantTiming: printed } : s)) }
+    expect(participantTiming(withPrinted, defaultRules)).toEqual({ timing: printed })
   })
 })

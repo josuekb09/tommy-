@@ -1,321 +1,165 @@
-import { presets, type Meeting, type SegmentType, type Settings, type Thresholds, type Turn } from "./types"
+import { isTimed, type AgendaItem, type ClubRules, type Meeting, type ProfileDefinition, type Segment } from "../domain"
+import { profileFor, roleLabels, segmentLabels } from "./profiles"
 
-export type AgendaRole = "Speech" | "Ice Breaker" | "Evaluation" | "Table Topics" | "unknown"
-export type AgendaItem = {
-  id: string
-  role: AgendaRole
-  name: string
-  title: string
-  durationSeconds?: number
-  thresholds?: Thresholds
-  segment?: SegmentType
-  uncertain: string[]
-  source: string
-  sourceIndex?: number
-}
-export type AgendaDraft = {
-  title: string
-  date: string
-  items: AgendaItem[]
-  originalText: string
-  warnings: string[]
-}
+/** A segment's items in agenda order. */
+export const sortedItems = (segment: Segment) => [...segment.items].sort((a, b) => a.order - b.order)
 
-const blankDraft = (originalText: string): AgendaDraft => ({ title: "", date: "", items: [], originalText, warnings: [] })
-const clean = (value: string) => value.replace(/\s+/g, " ").replace(/[|•]/g, " ").trim()
-const duration = (value: string) => {
-  const match = value.match(/\b(\d{1,2})\s*(?:min(?:ute)?s?|m)\b/i) || value.match(/\b(\d{1,2}):(\d{2})\b/)
-  if (!match) return undefined
-  const seconds = match[2] ? Number(match[1]) * 60 + Number(match[2]) : Number(match[1]) * 60
-  return seconds > 0 && seconds <= 60 * 30 ? seconds : undefined
-}
-const excludedRole = (line: string) => /\b(?:toastmaster(?:\s+of\s+the\s+day)?|president|sergeant\s+at\s+arms|time\s*keeper|timer(?:'?s)?\s+report|general\s+evaluat(?:or|ion)|grammarian|(?:ah|um|er)[-\s]*counter|educational(?:\s+speaker)?|table\s+topics\s+report|evaluation\s+report|meeting\s+(?:opening|closing|start|end)|break|interval|announcement)\b/i.test(line)
-const roleFor = (line: string): AgendaRole => {
-  // Roles, not incidental names or times, determine queue eligibility.
-  if (excludedRole(line)) return "unknown"
-  if (/\btable\s*topics\s*(?:master|speaker)\b/i.test(line)) return "Table Topics"
-  if (/ice\s*breaker/i.test(line)) return "Ice Breaker"
-  if (/\b(?:\d+(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+evaluat(?:or|ion)\b|\bevaluat(?:or|ion)\s*\d+\b|(?:^|[|:—–])\s*evaluat(?:or|ion)\b|\bevaluat(?:or|ion)\s+for\b/i.test(line)) return "Evaluation"
-  if (/\b(?:\d+(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+(?:prepared\s+)?speaker\b|\bspeaker\s*\d+\b|\bprepared\s+speech(?:\s+speaker)?\b|(?:^|[|:—–])\s*(?:\d+[.)]\s*)?speech\b/i.test(line)) return "Speech"
-  return "unknown"
-}
-const segmentFor = (role: AgendaRole): SegmentType | undefined => role === "Evaluation" ? "evaluations" : role === "Table Topics" ? "tableTopics" : role === "Speech" || role === "Ice Breaker" ? "speeches" : undefined
-const probablyName = (value: string) => {
-  const candidate = value.trim()
-  return /^[A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,3}$/.test(candidate)
-    && !/^(Speaker|Speech|Evaluation|Evaluator|General Evaluator|Table Topics|Toastmasters|Meeting|Agenda|Prepared)$/i.test(candidate)
-}
-const makeId = (index: number) => `agenda-${index}`
-const normalized = (value: string) => clean(value).toLocaleLowerCase()
-const nameFrom = (value: string) => {
-  const matches = value.match(/[A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,3}/g) || []
-  return matches.find(probablyName) || ""
-}
-const stripRole = (line: string) => line
-  .replace(/table\s*topics\s*(?:master|speaker)/ig, "")
-  .replace(/ice\s*breaker/ig, "")
-  .replace(/\b(?:\d+(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+evaluat(?:ion|or)\b|\bevaluat(?:ion|or)\s*\d+\b|evaluat(?:ion|or)/ig, "")
-  .replace(/\bprepared\s*/ig, "")
-  .replace(/\b(?:\d+(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+speaker\b|\bspeaker\s*\d+\b|\b(?:speech(?:es)?|speaker)\b/ig, "")
-  .replace(/^\d{1,2}[:.)\-\s]+/, "")
-  .replace(/\b\d{1,2}\s*(?:min(?:ute)?s?|m)\b|\b\d{1,2}:\d{2}\b/ig, "")
-const dedupeItems = (items: AgendaItem[]) => {
-  const seen = new Set<string>()
-  return items.filter(item => {
-    const t = item.thresholds
-    // Tommy currently has one evaluation queue, not separate short-comment and
-    // full-evaluation phases. Keep the first numbered evaluator assignment so
-    // a later appearance cannot overwrite or duplicate that person.
-    const key = item.role === "Evaluation"
-      ? `${item.role}|${normalized(item.name)}`
-      : `${item.role}|${normalized(item.name)}|${normalized(item.title)}|${t?.green ?? ""}/${t?.yellow ?? ""}/${t?.red ?? ""}`
-    if (!item.name || seen.has(key)) return !item.name
-    seen.add(key)
-    return true
-  })
+/** Every item in the order the meeting runs: segments as arranged, then each segment's items. */
+export const orderedItems = (meeting: Meeting) => meeting.segments.flatMap(sortedItems)
+
+/** The person's name, or the role while a template slot has no one in it yet. */
+export const personLabel = (item: AgendaItem) => item.personName.trim() || roleLabels[item.role]
+
+const renumber = (items: AgendaItem[]) => items.map((item, order) => ({ ...item, order }))
+
+/**
+ * Who comes after `currentId` in meeting order, among the items still
+ * waiting. Wraps to earlier items, so someone skipped is never forgotten.
+ */
+export function nextInOrder(meeting: Meeting, currentId: string | undefined, waiting: (item: AgendaItem) => boolean): AgendaItem | undefined {
+  const items = orderedItems(meeting)
+  const index = items.findIndex(item => item.id === currentId)
+  return items.slice(index + 1).find(waiting) ?? items.slice(0, Math.max(index, 0)).find(waiting)
 }
 
-const clockValues = (value: string) => [...value.matchAll(/\b(\d{1,2}):(\d{2})\b/g)]
-  .map(match => Number(match[1]) * 60 + Number(match[2]))
-  .filter(seconds => seconds > 0 && seconds <= 30 * 60)
-
-/** Extract G/Y/R from the participant's own row. Scheduled start times before
- * the presenter are excluded. Red-only rows use the red limit for all three
- * internal cue points, so they never signal green/yellow before red. */
-const thresholdsFrom = (line: string, name: string): Thresholds | undefined => {
-  const at = name ? line.toLocaleLowerCase().indexOf(name.toLocaleLowerCase()) : -1
-  const values = clockValues(at >= 0 ? line.slice(at + name.length) : line)
-  if (values.length >= 3) return { green: values[values.length - 3], yellow: values[values.length - 2], red: values[values.length - 1] }
-  if (values.length === 1) return { green: values[0], yellow: values[0], red: values[0] }
+/** Who comes before `currentId` in meeting order, among items the caller cares about. No wrap-around. */
+export function previousInOrder(meeting: Meeting, currentId: string | undefined, keep: (item: AgendaItem) => boolean): AgendaItem | undefined {
+  const items = orderedItems(meeting)
+  const index = items.findIndex(item => item.id === currentId)
+  if (index <= 0) return undefined
+  for (let i = index - 1; i >= 0; i--) if (keep(items[i])) return items[i]
   return undefined
 }
 
-/** Converts OCR text into a cautious, editable agenda draft. It never manufactures people or durations. */
-export function parseAgenda(text: string): AgendaDraft {
-  const originalText = text.trim()
-  const draft = blankDraft(originalText)
-  if (!originalText) { draft.warnings.push("No readable text was found. Try a brighter, straighter photo."); return draft }
-  const lines = originalText.split(/\r?\n/).map(clean).filter(Boolean)
-  const dateLine = lines.find(line => /\b\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}\b|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}/i.test(line))
-  if (dateLine) draft.date = dateLine.match(/\b(?:\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:,?\s+\d{4})?)\b/i)?.[0] || ""
-  const titleLine = lines.find(line => /toastmasters|club meeting|meeting agenda/i.test(line))
-  if (titleLine) draft.title = titleLine
-
-  for (const [index, line] of lines.entries()) {
-    const role = roleFor(line)
-    if (role === "unknown") continue
-    const withoutRole = stripRole(line)
-    const candidates = withoutRole.split(/[—–|:]|\s+-\s+|\s+by\s+/i).map(clean).filter(Boolean)
-    // A common two-line layout puts a role on one line and the participant on the next.
-    const nextLine = lines[index + 1] || ""
-    const nextName = roleFor(nextLine) === "unknown" ? nameFrom(nextLine) : ""
-    const name = candidates.find(probablyName) || nameFrom(withoutRole) || nextName
-    let title = candidates.find(candidate => candidate !== name && candidate.length > 2) || ""
-    if (role === "Evaluation") {
-      const evaluated = line.match(/(?:\bfor|evaluat(?:ing|es))\s+([A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){0,3})/i)?.[1]
-      if (evaluated) title = `Evaluates ${evaluated}`
-    }
-    const uncertain: string[] = []
-    if (!name) uncertain.push("Participant name needs review")
-    if (role === "Speech" && !title) uncertain.push("Speech title not recognized")
-    const thresholds = thresholdsFrom(line, name)
-    const item: AgendaItem = { id: makeId(index), role, name, title, durationSeconds: thresholds?.red || duration(line), thresholds, segment: segmentFor(role), uncertain, source: line }
-    draft.items.push(item)
-  }
-  if (!draft.title) draft.warnings.push("Meeting title was not confidently recognized.")
-  draft.items = dedupeItems(draft.items)
-  if (!draft.items.length) draft.warnings.push("No timer-relevant agenda items were confidently identified. Add items manually in the review step.")
-  return draft
-}
-
-/** Combines pages in their selected order and removes confirmed duplicates across pages. */
-export function mergeAgendaDrafts(drafts: AgendaDraft[]): AgendaDraft {
-  const readable = drafts.filter(draft => draft.originalText.trim())
-  const items = dedupeItems(readable.flatMap((draft, page) => draft.items.map(item => ({ ...item, id: `page-${page}-${item.id}`, sourceIndex: page }))))
-  const warnings = readable.flatMap(draft => draft.warnings).filter((warning, index, all) => all.indexOf(warning) === index)
-  return {
-    title: readable.map(draft => draft.title).find(Boolean) || "",
-    date: readable.map(draft => draft.date).find(Boolean) || "",
-    items,
-    originalText: readable.map((draft, index) => `Page ${index + 1}\n${draft.originalText}`).join("\n\n"),
-    warnings
-  }
-}
-
-export const agendaRoleOptions: AgendaRole[] = ["Speech", "Ice Breaker", "Evaluation", "Table Topics", "unknown"]
-export const segmentForAgendaRole = segmentFor
-
-export const isoDateLocal = (value: string, fallback: string): string => {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value
-  const parsed = Date.parse(value)
-  if (Number.isNaN(parsed)) return fallback
-  const d = new Date(parsed)
-  const year = d.getFullYear()
-  const month = String(d.getMonth() + 1).padStart(2, "0")
-  const day = String(d.getDate()).padStart(2, "0")
-  return `${year}-${month}-${day}`
-}
-
-export type MergeMode = "append" | "replace"
-
-/**
- * Merges an agenda draft into a meeting safely:
- * - Completed, running, paused turns, or turns with recorded times are NEVER removed.
- * - In "replace" mode, only untouched queued turns (status: queued and elapsedMs === 0) are replaced.
- * - Skips duplicate turns with the same name and role in the target segment.
- */
-export function mergeAgendaIntoMeeting(
-  meeting: Meeting,
-  draft: AgendaDraft,
-  settings: Settings,
-  merge: MergeMode,
-  options?: { idGenerator?: () => string; localDateFallback?: string }
-): Meeting {
-  const uid = options?.idGenerator || (() => crypto.randomUUID())
-  const validItems = draft.items.filter(item => item.name.trim() && item.role !== "unknown" && item.segment)
-
-  const updatedSegments = meeting.segments.map(segment => {
-    // Preserve any turn that has already been timed, is currently running/paused, or has elapsed time.
-    // In "replace" mode, only untouched queued turns (status: queued && elapsedMs === 0) are removed.
-    const preservedTurns = merge === "replace"
-      ? segment.turns.filter(t => t.status !== "queued" || t.elapsedMs > 0)
-      : [...segment.turns]
-
-    const resultTurns = [...preservedTurns]
-
-    for (const item of validItems) {
-      if (item.segment !== segment.type) continue
-      const role = item.role as keyof typeof presets
-      const trimmedName = item.name.trim()
-      const turnThresholds = item.thresholds || settings.presetOverrides?.[role] || presets[role]
-
-      // Suppress repeats from overlapping page photos. Evaluation assignments
-      // are one-per-person in the present data model.
-      const isDuplicate = resultTurns.some(
-        t => t.name.trim().toLowerCase() === trimmedName.toLowerCase() && t.role === role
-          && (role === "Evaluation" || (t.thresholds.green === turnThresholds.green
-            && t.thresholds.yellow === turnThresholds.yellow
-            && t.thresholds.red === turnThresholds.red))
-      )
-      if (isDuplicate) continue
-
-      const durationNote = item.durationSeconds
-        ? `Agenda duration: ${Math.floor(item.durationSeconds / 60)}:${String(item.durationSeconds % 60).padStart(2, "0")}`
-        : ""
-      const note = [item.title && `Speech title: ${item.title}`, durationNote].filter(Boolean).join(" · ") || undefined
-
-      const newTurn: Turn = {
-        id: uid(),
-        name: trimmedName,
-        role,
-        thresholds: { ...turnThresholds },
-        status: "queued",
-        elapsedMs: 0,
-        note
-      }
-      resultTurns.push(newTurn)
-    }
-
-    return { ...segment, turns: resultTurns }
-  })
-
-  const hasRecorded = meeting.segments.some(s => s.turns.some(t => t.status === "done" || t.elapsedMs > 0))
-  const replaceMeetingDetails = !hasRecorded || merge === "replace"
-  const title = replaceMeetingDetails ? (draft.title.trim() || meeting.title) : meeting.title
-  const date = replaceMeetingDetails
-    ? (draft.date ? isoDateLocal(draft.date, meeting.date || options?.localDateFallback || "") : meeting.date)
-    : meeting.date
-
+/** Moves an item to a new position within its segment. */
+export function moveItem(meeting: Meeting, itemId: string, toIndex: number): Meeting {
   return {
     ...meeting,
-    title,
-    date,
-    segments: updatedSegments
+    segments: meeting.segments.map(segment => {
+      const items = sortedItems(segment)
+      const from = items.findIndex(item => item.id === itemId)
+      if (from < 0) return segment
+      const [moved] = items.splice(from, 1)
+      items.splice(Math.max(0, Math.min(toIndex, items.length)), 0, moved)
+      return { ...segment, items: renumber(items) }
+    }),
   }
 }
 
-export type OcrErrorKind = "worker-init" | "lang-download" | "runtime" | "unreadable"
+/** Moves a whole segment earlier (-1) or later (+1) in the meeting. */
+export function moveSegment(meeting: Meeting, segmentId: string, delta: -1 | 1): Meeting {
+  const segments = [...meeting.segments]
+  const from = segments.findIndex(segment => segment.id === segmentId)
+  const to = from + delta
+  if (from < 0 || to < 0 || to >= segments.length) return meeting
+  ;[segments[from], segments[to]] = [segments[to], segments[from]]
+  return { ...meeting, segments }
+}
 
-export interface OcrErrorInfo {
-  kind: OcrErrorKind
-  userMessage: string
-  logMessage: string
+/** Adds an item to a segment, at the end or just before another item (an evaluator's brief goes right before the speech). */
+export function insertItem(meeting: Meeting, segmentId: string, item: AgendaItem, beforeItemId?: string): Meeting {
+  return {
+    ...meeting,
+    segments: meeting.segments.map(segment => {
+      if (segment.id !== segmentId) return segment
+      const items = sortedItems(segment)
+      const at = items.findIndex(existing => existing.id === beforeItemId)
+      items.splice(at < 0 ? items.length : at, 0, item)
+      return { ...segment, items: renumber(items) }
+    }),
+  }
+}
+
+const evaluates = (item: AgendaItem) => item.role === "Evaluator" || item.role === "EvaluatorBrief"
+
+/** The speech an evaluator (or their brief) is linked to, if it is still on the agenda. */
+export function evaluatedSpeech(meeting: Meeting, item: AgendaItem): AgendaItem | undefined {
+  if (!evaluates(item) || !item.evaluatesItemId) return undefined
+  return orderedItems(meeting).find(other => other.id === item.evaluatesItemId && other.role === "Speaker")
+}
+
+/** "Evaluating: Ada Lovelace" for evaluators and briefs that are paired. */
+export function evaluatingLabel(meeting: Meeting, item: AgendaItem): string | undefined {
+  const speech = evaluatedSpeech(meeting, item)
+  return speech && `Evaluating: ${personLabel(speech)}`
+}
+
+export type AgendaWarning = { itemId: string; message: string }
+
+const listNames = (names: string[]) => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`)
+
+/**
+ * Pairing problems worth a look before the meeting. They never block
+ * anything: a club may have fewer evaluators than speakers on purpose.
+ */
+export function agendaWarnings(meeting: Meeting): AgendaWarning[] {
+  const items = orderedItems(meeting)
+  const warnings: AgendaWarning[] = []
+  for (const item of items.filter(evaluates)) {
+    if (!evaluatedSpeech(meeting, item))
+      warnings.push({ itemId: item.id, message: `${personLabel(item)} (${roleLabels[item.role].toLowerCase()}) is not paired with a speaker.` })
+  }
+  for (const speech of items.filter(item => item.role === "Speaker")) {
+    const evaluators = items.filter(item => item.role === "Evaluator" && item.evaluatesItemId === speech.id)
+    if (!evaluators.length) warnings.push({ itemId: speech.id, message: `No evaluator for ${personLabel(speech)}.` })
+    if (evaluators.length > 1)
+      warnings.push({ itemId: speech.id, message: `${personLabel(speech)} has ${evaluators.length} evaluators: ${listNames(evaluators.map(personLabel))}.` })
+    const brief = items.find(item => item.role === "EvaluatorBrief" && item.evaluatesItemId === speech.id)
+    if (brief && evaluators.length === 1 && brief.personName.trim() !== evaluators[0].personName.trim())
+      warnings.push({
+        itemId: brief.id,
+        message: `The brief before ${personLabel(speech)}'s speech is by ${personLabel(brief)}, but ${personLabel(evaluators[0])} evaluates it.`,
+      })
+  }
+  return warnings
+}
+
+/** "Guest 3": the name a Table Topics participant gets when there is no time to ask. */
+export function nextGuestName(meeting: Meeting) {
+  const count = meeting.segments.flatMap(segment => segment.items).filter(item => item.role === "TableTopicsSpeaker").length
+  return `Guest ${count + 1}`
 }
 
 /**
- * Classifies OCR errors into distinct categories without exposing sensitive user or image data.
- * Distinguishes worker initialization errors (CSP, worker scripts, WASM compilation),
- * language file download failures (network, HTTP status, offline),
- * OCR recognition runtime errors, and genuinely unreadable images (no extracted text).
+ * A new, empty slot like the last item of a segment: same role, profile and
+ * timing, no person or title. An evaluator or brief is paired with the next
+ * speech that has no one in that role yet.
  */
-export function classifyOcrError(
-  cause: unknown,
-  context?: { stage?: string; hasText?: boolean }
-): OcrErrorInfo {
-  if (context?.hasText === false && !cause) {
-    return {
-      kind: "unreadable",
-      userMessage: "Tommy could not read any text from that image. Try a brighter, sharper photo with the page filling the frame.",
-      logMessage: "[AgendaScanner] Genuinely unreadable image: no text detected"
-    }
-  }
-
-  const raw = typeof cause === "string"
-    ? cause
-    : cause instanceof Error
-      ? cause.message
-      : (cause && typeof cause === "object" && "message" in cause && typeof (cause as { message: unknown }).message === "string")
-        ? (cause as { message: string }).message
-        : String(cause || "")
-
-  const msg = raw.toLowerCase()
-  const stage = context?.stage || ""
-
-  // 1. Language file download error (network error or HTTP status fetching traineddata)
-  if (
-    stage === "loading-lang" ||
-    /traineddata|response code:?\s*[45]\d\d/i.test(msg) ||
-    (/network error|failed to fetch/i.test(msg) && stage !== "loading-core" && stage !== "worker-init")
-  ) {
-    return {
-      kind: "lang-download",
-      userMessage: "Could not download the English OCR language model. Check your internet connection and try again.",
-      logMessage: `[AgendaScanner] Language model download failure (stage: ${stage || "loading-lang"})`
-    }
-  }
-
-  // 2. Worker initialization & CSP / WASM errors
-  if (
-    stage === "worker-init" ||
-    stage === "loading-core" ||
-    stage === "initializing" ||
-    /importscripts|worker|tesseractcore|initialization failed|wasm|webassembly|content security policy|csp|compile error|instantiate/i.test(msg) ||
-    raw === "" ||
-    msg === "script error."
-  ) {
-    return {
-      kind: "worker-init",
-      userMessage: "The local OCR engine could not start. Please check browser permissions, Content Security Policy, or try refreshing.",
-      logMessage: `[AgendaScanner] Worker initialization failure (stage: ${stage || "worker-init"})`
-    }
-  }
-
-  // 3. OCR runtime error (image decoding, memory limit, canvas error during recognize)
-  if (
-    stage === "recognizing" ||
-    /loadimage|image|canvas|memory|out of memory|allocation|bitmap/i.test(msg)
-  ) {
-    return {
-      kind: "runtime",
-      userMessage: "Could not process this image file. Try taking a photo with lower resolution or a standard format (JPEG or PNG).",
-      logMessage: `[AgendaScanner] OCR runtime recognition failure (stage: ${stage || "recognizing"})`
-    }
-  }
-
-  // 4. Fallback runtime error
+export function duplicateLast(meeting: Meeting, segmentId: string): Omit<AgendaItem, "id" | "order"> | undefined {
+  const segment = meeting.segments.find(s => s.id === segmentId)
+  const last = segment && sortedItems(segment).at(-1)
+  if (!last) return undefined
+  const items = orderedItems(meeting)
+  const free = evaluates(last)
+    ? items.find(item => item.role === "Speaker" && !items.some(other => other.role === last.role && other.evaluatesItemId === item.id))
+    : undefined
   return {
-    kind: "runtime",
-    userMessage: "OCR could not finish processing the image. Try again with a clearer photo.",
-    logMessage: `[AgendaScanner] Unspecified OCR failure (stage: ${stage || "unknown"})`
+    role: last.role,
+    personName: "",
+    ...(last.profileId && { profileId: last.profileId }),
+    ...(free && { evaluatesItemId: free.id }),
+    timing: last.timing,
   }
+}
+
+export type Queue = { done: AgendaItem[]; current?: AgendaItem; upcoming: AgendaItem[] }
+
+/** The meeting as the Timer sees it: who is done, who is on now and who is still to come, in agenda order. */
+export function queueOf(meeting: Meeting, currentId: string | undefined, isDone: (item: AgendaItem) => boolean): Queue {
+  const items = orderedItems(meeting)
+  const current = items.find(item => item.id === currentId)
+  const others = items.filter(item => item !== current)
+  return { done: others.filter(isDone), current, upcoming: others.filter(item => !isDone(item)) }
+}
+
+/** The segment's printed heading, or its kind's label. */
+export const segmentTitle = (segment: Pick<Segment, "kind" | "title">) => segment.title ?? segmentLabels[segment.kind]
+
+/** The items the Timer times, in agenda order: agenda-only lines are left out. */
+export const timedItems = (meeting: Meeting) => orderedItems(meeting).filter(isTimed)
+
+/** Timing for a Table Topics participant added live: what the agenda printed for the segment, else the club's profile. */
+export function participantTiming(meeting: Meeting, rules: ClubRules, clubProfiles: Record<string, ProfileDefinition> = {}) {
+  const printed = meeting.segments.find(s => s.kind === "table_topics" && s.participantTiming)?.participantTiming
+  return printed ? { timing: printed } : { profileId: "table_topics", timing: profileFor("TableTopicsSpeaker", rules, clubProfiles) }
 }
