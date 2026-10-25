@@ -36,7 +36,19 @@ export function step(state: TimerState, action: Exclude<TimingAction, { type: "u
     case "start":
       return state.status === "idle" ? { ...state, status: "running", runningSince: action.at, startedAt: action.at } : undefined
     case "resume":
-      return state.status === "paused" ? { ...state, status: "running", runningSince: action.at } : undefined
+      if (state.status === "paused") return { ...state, status: "running", runningSince: action.at }
+      if (state.status !== "stopped") return undefined
+      // Resume after Stop: carry on from the time shown at Stop (any edit
+      // included), as if Pause had been pressed. The stopped gap is not
+      // speaking time; the edit stays in the log.
+      return {
+        ...state,
+        status: "running",
+        runningSince: action.at,
+        stoppedAt: undefined,
+        overrideMs: undefined,
+        intervalsMs: state.overrideMs === undefined ? state.intervalsMs : state.overrideMs - sum(state.offsetsMs),
+      }
     case "pause":
       return state.status === "running" ? { ...closeInterval(state, action.at), status: "paused" } : undefined
     case "stop":

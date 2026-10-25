@@ -22,7 +22,7 @@ A timer is stored only as an ordered list of actions. Everything else is derived
 |---|---|---|
 | `start` | `at` | status is `idle` |
 | `pause` | `at` | status is `running` |
-| `resume` | `at` | status is `paused` |
+| `resume` | `at` | status is `paused` or `stopped` |
 | `stop` | `at` | status is `running` or `paused` |
 | `reset` | `at` | status is not `idle`, or there are offsets |
 | `offset` | `at`, `ms` (integer, may be negative) | status is not `idle`, and the applied amount (see below) is not 0 |
@@ -50,7 +50,7 @@ Effect of each accepted action:
 
 - **start:** status = running, runningSince = at, startedAt = at.
 - **pause:** intervalsMs += at − runningSince, then status = paused.
-- **resume:** status = running, runningSince = at.
+- **resume:** status = running, runningSince = at. Resume is also accepted when status is `stopped`: it is treated as if Pause had been pressed instead of Stop, so the stopped gap is **not** speaking time and the timer carries on from the time shown (any edit included). If the stopped state had an `overrideMs` from an edit, that value becomes the new intervalsMs baseline (adjusted so `elapsed` at the resume instant equals the shown time); `overrideMs` and `stoppedAt` are cleared. The edit stays in the log.
 - **stop:** close the running interval if running, then status = stopped, stoppedAt = at.
 - **reset:** return to the initial state (idle, zero, no offsets, no edits). The previous values stay in the log, so the reset can be undone.
 - **offset:** applied = max(ms, −elapsed(at)), so an offset can only take the time down to zero. Append `applied` to offsetsMs. If overrideMs is set, add `applied` to it as well.

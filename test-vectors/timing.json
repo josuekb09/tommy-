@@ -1418,6 +1418,85 @@
       ]
     },
     {
+      "name": "resume-after-stop-continues-timing",
+      "description": "A Stop pressed by mistake is forgiven: Resume carries on from the time shown, and the stopped gap is not counted.",
+      "profile": "speech",
+      "actions": [
+        { "type": "start", "at": 0 },
+        { "type": "stop", "at": 100000 },
+        { "type": "resume", "at": 150000 },
+        { "type": "stop", "at": 200000 }
+      ],
+      "expect": [
+        { "at": 120000, "status": "stopped", "elapsedMs": 100000, "signal": "none" },
+        { "at": 150000, "status": "running", "elapsedMs": 100000, "signal": "none" },
+        { "at": 170000, "status": "running", "elapsedMs": 120000, "signal": "none" },
+        { "at": 500000, "status": "stopped", "elapsedMs": 150000, "signal": "none" }
+      ]
+    },
+    {
+      "name": "resume-after-stop-keeps-the-edited-time",
+      "description": "The time shown after an edit is the new baseline. Resume carries on from there and the edit stays in the log.",
+      "profile": "speech",
+      "actions": [
+        { "type": "start", "at": 0 },
+        { "type": "stop", "at": 100000 },
+        { "type": "edit", "at": 101000, "ms": 90000, "reason": "Started early" },
+        { "type": "resume", "at": 110000 },
+        { "type": "stop", "at": 160000 }
+      ],
+      "expect": [
+        { "at": 100500, "status": "stopped", "elapsedMs": 100000, "signal": "none" },
+        { "at": 109000, "status": "stopped", "elapsedMs": 90000, "signal": "none" },
+        { "at": 110000, "status": "running", "elapsedMs": 90000, "signal": "none" },
+        {
+          "at": 500000,
+          "status": "stopped",
+          "elapsedMs": 140000,
+          "signal": "none",
+          "edits": [{ "at": 101000, "fromMs": 100000, "toMs": 90000, "reason": "Started early" }]
+        }
+      ]
+    },
+    {
+      "name": "resume-after-stop-preserves-offsets",
+      "description": "A Resume after Stop keeps the offsets applied; the running timer continues from the shown time.",
+      "profile": "speech",
+      "actions": [
+        { "type": "start", "at": 0 },
+        { "type": "offset", "at": 10000, "ms": 5000 },
+        { "type": "stop", "at": 100000 },
+        { "type": "resume", "at": 150000 },
+        { "type": "stop", "at": 200000 }
+      ],
+      "expect": [
+        { "at": 100000, "status": "stopped", "elapsedMs": 105000, "signal": "none" },
+        { "at": 150000, "status": "running", "elapsedMs": 105000, "signal": "none" },
+        { "at": 170000, "status": "running", "elapsedMs": 125000, "signal": "none" },
+        { "at": 500000, "status": "stopped", "elapsedMs": 155000, "signal": "none", "offsetsMs": [5000] }
+      ]
+    },
+    {
+      "name": "resume-when-idle-is-ignored",
+      "profile": "speech",
+      "actions": [
+        { "type": "resume", "at": 0 },
+        { "type": "start", "at": 1000 }
+      ],
+      "ignored": [0],
+      "expect": [{ "at": 2000, "status": "running", "elapsedMs": 1000, "signal": "none" }]
+    },
+    {
+      "name": "resume-while-running-is-ignored",
+      "profile": "speech",
+      "actions": [
+        { "type": "start", "at": 0 },
+        { "type": "resume", "at": 1000 }
+      ],
+      "ignored": [1],
+      "expect": [{ "at": 2000, "status": "running", "elapsedMs": 2000, "signal": "none" }]
+    },
+    {
       "name": "table-topics-contest-minimum-edge-qualifies",
       "profile": "tableTopicsContest",
       "actions": [

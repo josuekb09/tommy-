@@ -37,6 +37,39 @@ describe("timer replay", () => {
     expect(elapsed(actions, 20_000)).toBe(20_000)
   })
 
+  it("resume after an accidental Stop continues from the time shown", () => {
+    const actions: TimingAction[] = [
+      { type: "start", at: 0 },
+      { type: "stop", at: 100_000 },
+      { type: "resume", at: 150_000 },
+    ]
+    expect(stateOf(actions).status).toBe("running")
+    expect(elapsed(actions, 150_000)).toBe(100_000)
+    expect(elapsed(actions, 170_000)).toBe(120_000)
+    const stopped = buildRecord("i", "m", [...actions, { type: "stop", at: 200_000 }], speech)
+    expect(stopped.elapsedMs).toBe(150_000)
+    expect(stopped.status).toBe("stopped")
+  })
+
+  it("resume after Stop keeps the edited time and the edit stays in the log", () => {
+    const actions: TimingAction[] = [
+      { type: "start", at: 0 },
+      { type: "stop", at: 100_000 },
+      { type: "edit", at: 101_000, ms: 90_000, reason: "Started early" },
+      { type: "resume", at: 110_000 },
+      { type: "stop", at: 160_000 },
+    ]
+    const record = buildRecord("i", "m", actions, speech)
+    expect(record.elapsedMs).toBe(140_000)
+    expect(record.edits).toEqual([{ at: 101_000, fromMs: 100_000, toMs: 90_000, reason: "Started early" }])
+  })
+
+  it("rejects a resume that was not preceded by Pause or Stop", () => {
+    expect(appendAction(undefined, ids, { type: "resume", at: 0 }, speech)).toBeUndefined()
+    const running = buildRecord("i", "m", [{ type: "start", at: 0 }], speech)
+    expect(appendAction(running, ids, { type: "resume", at: 1_000 }, speech)).toBeUndefined()
+  })
+
   it("undo after an accidental reset restores the recorded time", () => {
     const actions: TimingAction[] = [
       { type: "start", at: 0 },
