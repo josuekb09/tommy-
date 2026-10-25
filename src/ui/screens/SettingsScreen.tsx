@@ -5,7 +5,7 @@ import { builtInProfiles, definitionFromRange, formatClock, parseClock, profileL
 import { profileFromRange } from "../../engine/range"
 import { exportAll, exportMeeting, ImportError, importExport, parseExport } from "../../storage/export-import"
 import { download, Toggle } from "../components"
-import type { AppData } from "../hooks"
+import type { AppData, Notify } from "../hooks"
 import { MembersCard } from "../people"
 import { db, repo } from "../runtime"
 
@@ -19,7 +19,7 @@ const categoryLabels: Record<ProfileCategory, string> = {
   custom: "Custom",
 }
 
-type Props = { data: AppData & { meeting: Meeting }; readOnly: boolean; notify: (message: string) => void }
+type Props = { data: AppData & { meeting: Meeting }; readOnly: boolean; notify: Notify }
 
 export function SettingsScreen({ data, readOnly, notify }: Props) {
   const { settings, rules, club, meeting } = data
@@ -222,17 +222,7 @@ export function SettingsScreen({ data, readOnly, notify }: Props) {
 const clampSeconds = (value: string) => Math.min(120, Math.max(0, Math.round(Number(value) || 0)))
 
 /** The club's profile library: edit any built-in, reset it, and add custom profiles from a range. */
-function ProfileLibrary({
-  club,
-  readOnly,
-  save,
-  notify,
-}: {
-  club: Club
-  readOnly: boolean
-  save: (club: Club) => Promise<void>
-  notify: (message: string) => void
-}) {
+function ProfileLibrary({ club, readOnly, save, notify }: { club: Club; readOnly: boolean; save: (club: Club) => Promise<void>; notify: Notify }) {
   const clubProfiles = club.profiles ?? {}
   const library = profileLibrary(clubProfiles)
   const [name, setName] = useState("")

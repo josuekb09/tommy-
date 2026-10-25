@@ -34,8 +34,8 @@ function TimerApp({ route, go }: { route: Route; go: (route: Route) => void }) {
   const [explaining, setExplaining] = useState(false)
   const explanation = useMemo(() => (explaining && data ? explainSignals(data.rules, profileLibrary(data.clubProfiles)) : null), [explaining, data])
   useSpeakerFeed(data?.meeting ? { ...data, meeting: data.meeting } : undefined, selectedId, explanation)
-  const [toast, setToast] = useState("")
-  const notify = useCallback((message: string) => setToast(message), [])
+  const [toast, setToast] = useState<{ message: string; action?: { label: string; onClick: () => void } }>()
+  const notify = useCallback((message: string, action?: { label: string; onClick: () => void }) => setToast({ message, ...(action && { action }) }), [])
   const {
     needRefresh: [needRefresh],
     updateServiceWorker,
@@ -43,7 +43,8 @@ function TimerApp({ route, go }: { route: Route; go: (route: Route) => void }) {
 
   useEffect(() => {
     if (!toast) return
-    const id = setTimeout(() => setToast(""), 2_500)
+    // A toast with an Undo button stays visible longer: the Timer needs the time to spot it and tap it.
+    const id = setTimeout(() => setToast(undefined), toast.action ? 6_000 : 2_500)
     return () => clearTimeout(id)
   }, [toast])
 
@@ -122,7 +123,18 @@ function TimerApp({ route, go }: { route: Route; go: (route: Route) => void }) {
       </nav>
       {toast && (
         <div className="toast" role="status">
-          {toast}
+          <span className="toast-message">{toast.message}</span>
+          {toast.action && (
+            <button
+              className="toast-action"
+              onClick={() => {
+                toast.action!.onClick()
+                setToast(undefined)
+              }}
+            >
+              {toast.action.label}
+            </button>
+          )}
         </div>
       )}
     </main>

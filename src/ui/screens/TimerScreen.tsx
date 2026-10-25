@@ -35,7 +35,7 @@ import { resultLabels } from "../../engine/report"
 import { playThresholdTone, unlockAudio } from "../../engine/audio"
 import { Sheet, Toggle } from "../components"
 import { canCast, castSpeakerView, downloadBackgrounds, openSpeakerWindow, openZoomWindow } from "../present"
-import { useSecondTicks, useWakeLock, type AppData } from "../hooks"
+import { useSecondTicks, useWakeLock, type AppData, type Notify } from "../hooks"
 import { peopleOf, PersonField, savePerson, type PersonChoice } from "../people"
 import { repo } from "../runtime"
 import { SignalIcon, signalAnnouncement, signalPresentation } from "../signals"
@@ -50,7 +50,7 @@ type Props = {
   readOnly: boolean
   selectedId?: string
   select: (id?: string) => void
-  notify: (message: string) => void
+  notify: Notify
   openMeeting: () => void
   explaining: boolean
   setExplaining: (on: boolean) => void
@@ -131,7 +131,7 @@ export function TimerScreen({ data, readOnly, selectedId, select, notify, openMe
     const name = item && personLabel(item)
     const prompt = status === "stopped" ? `Re-time ${name} from zero? The recorded time will be cleared. You can undo this.` : undefined
     if (prompt && !confirm(prompt)) return
-    void act({ type: "reset" }).then(() => notify(status === "stopped" ? "Cleared the recorded time. Undo is available." : "Timer reset. Undo is available."))
+    void act({ type: "reset" }).then(() => notify(status === "stopped" ? "Cleared the recorded time" : "Timer reset", { label: "Undo", onClick: undo }))
   }
   const offset = (seconds: number) => void act({ type: "offset", ms: seconds * 1000 })
   const undo = () => void act({ type: "undo" })
@@ -325,7 +325,7 @@ export function TimerScreen({ data, readOnly, selectedId, select, notify, openMe
           save={(ms, reason) =>
             void act({ type: "edit", ms, reason }).then(() => {
               setSheet(undefined)
-              notify("Recorded time edited")
+              notify("Recorded time edited", { label: "Undo", onClick: undo })
             })
           }
         />
@@ -516,7 +516,7 @@ function PresentSheet({
   showClock,
 }: {
   close: () => void
-  notify: (message: string) => void
+  notify: Notify
   explaining: boolean
   setExplaining: (on: boolean) => void
   showClock: boolean

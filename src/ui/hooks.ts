@@ -7,6 +7,9 @@ import { elapsedAt, stateOf } from "../engine/timing"
 import { clock, db, repo } from "./runtime"
 
 export type Route = "meeting" | "timer" | "report" | "settings" | "speaker" | "zoom" | "print"
+
+/** Shows a toast. An optional action is a button inside the toast (e.g. Undo) that extends the dwell time. */
+export type Notify = (message: string, action?: { label: string; onClick: () => void }) => void
 const routes: Route[] = ["meeting", "timer", "report", "settings", "speaker", "zoom", "print"]
 
 const readRoute = (): Route => {

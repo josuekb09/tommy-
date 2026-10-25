@@ -33,7 +33,7 @@ import { builtInTemplates } from "../../engine/templates"
 import { stateOf } from "../../engine/timing"
 import { RecordedTimeError } from "../../storage/repository"
 import { Sheet, Toggle } from "../components"
-import type { AppData } from "../hooks"
+import type { AppData, Notify } from "../hooks"
 import { peopleOf, PersonField, savePerson, type PersonChoice } from "../people"
 import { repo } from "../runtime"
 import { resolveTiming, TimingField, type TimingChoice } from "../timing-field"
@@ -51,17 +51,7 @@ const pairedRoles: AgendaRole[] = ["Evaluator", "EvaluatorBrief"]
 type Data = AppData & { meeting: Meeting }
 type SheetState = { type: "add"; segmentId: string } | { type: "edit"; itemId: string } | { type: "new" } | { type: "template" }
 
-export function MeetingScreen({
-  data,
-  readOnly,
-  open,
-  notify,
-}: {
-  data: Data
-  readOnly: boolean
-  open: (itemId: string) => void
-  notify: (message: string) => void
-}) {
+export function MeetingScreen({ data, readOnly, open, notify }: { data: Data; readOnly: boolean; open: (itemId: string) => void; notify: Notify }) {
   const { meeting, records } = data
   const statusOf = (item: AgendaItem) => stateOf(records.find(record => record.agendaItemId === item.id)?.actions ?? []).status
   const [sheet, setSheet] = useState<SheetState>()
@@ -197,7 +187,7 @@ function SegmentSection({
   open: (itemId: string) => void
   edit: (itemId: string) => void
   add: () => void
-  notify: (message: string) => void
+  notify: Notify
 }) {
   const { meeting, records } = data
   const items = sortedItems(segment)
@@ -331,7 +321,7 @@ function useDragToReorder(list: React.RefObject<HTMLOListElement | null>, move: 
 }
 
 /** One tap adds the next Table Topics participant: a name is optional, and a new name is a guest unless the Timer says otherwise. */
-function TableTopicsQuickAdd({ data, readOnly, notify }: { data: Data; readOnly: boolean; notify: (message: string) => void }) {
+function TableTopicsQuickAdd({ data, readOnly, notify }: { data: Data; readOnly: boolean; notify: Notify }) {
   const { meeting } = data
   const people = useMemo(() => peopleOf(data.members, data.guests), [data.members, data.guests])
   const [person, setPerson] = useState<PersonChoice>({ name: "", guest: true })

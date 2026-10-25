@@ -3,11 +3,11 @@ import { Check, ChevronLeft, ChevronRight, Clock3, Copy, Minus, MonitorUp, Pause
 import type { Meeting } from "../../domain"
 import { formatClock } from "../../engine/profiles"
 import { buildReport, shareText, shownTime, spokenReport, type LineStatus, type Report, type ReportLine } from "../../engine/report"
-import type { AppData } from "../hooks"
+import type { AppData, Notify } from "../hooks"
 import { useEnglishVoices, useReadAloud } from "../read-aloud"
 import { repo } from "../runtime"
 
-type Props = { data: AppData & { meeting: Meeting }; notify: (message: string) => void; openPrint: () => void }
+type Props = { data: AppData & { meeting: Meeting }; notify: Notify; openPrint: () => void }
 
 /** The result in words with a matching icon, so it never relies on colour. */
 export function StatusChip({ status, label }: { status: LineStatus; label: string }) {

@@ -2,6 +2,7 @@ import { useId, useMemo, useState } from "react"
 import { PencilLine, Trash2, UserPlus } from "lucide-react"
 import type { Guest, Member } from "../domain"
 import { matchPeople, parseAliases, type Person } from "../engine/people"
+import type { Notify } from "./hooks"
 import { repo } from "./runtime"
 
 /** What a person field holds: a name, and who it is once the Timer picked someone. */
@@ -100,7 +101,7 @@ export function PersonField({
 }
 
 /** The club's member list. Adding a name like an existing one asks first and never merges. */
-export function MembersCard({ members, readOnly, notify }: { members: Member[]; readOnly: boolean; notify: (message: string) => void }) {
+export function MembersCard({ members, readOnly, notify }: { members: Member[]; readOnly: boolean; notify: Notify }) {
   const [name, setName] = useState("")
   const [editing, setEditing] = useState<string>()
   const people = useMemo(() => peopleOf(members, []), [members])
@@ -161,7 +162,7 @@ export function MembersCard({ members, readOnly, notify }: { members: Member[]; 
 }
 
 /** Rename a member and list other spellings (from agendas, nicknames) that should find them. */
-function MemberEditor({ member, done, notify }: { member: Member; done: () => void; notify: (message: string) => void }) {
+function MemberEditor({ member, done, notify }: { member: Member; done: () => void; notify: Notify }) {
   const [name, setName] = useState(member.name)
   const [aliases, setAliases] = useState(member.aliases.join(", "))
   const save = async () => {
