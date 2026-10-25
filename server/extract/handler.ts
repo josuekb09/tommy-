@@ -43,7 +43,9 @@ export async function handleScan(
   } catch (error) {
     console.error(`parse-agenda failed: ${error instanceof ExtractError ? error.kind : "crash"}: ${error instanceof Error ? error.message : String(error)}`)
     if (!(error instanceof ExtractError)) return fail(502, "unavailable")
-    const status = { rate_limited: 429, busy: 503, unreadable: 422, bad_request: 400, not_configured: 503, unavailable: 502, timeout: 504 }[error.kind]
+    const status = { rate_limited: 429, quota_used_up: 429, busy: 503, unreadable: 422, bad_request: 400, not_configured: 503, unavailable: 502, timeout: 504 }[
+      error.kind
+    ]
     return fail(status, error.kind, error.retryAfterSeconds)
   }
 }

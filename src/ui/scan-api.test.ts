@@ -44,6 +44,10 @@ describe("scanning from the browser", () => {
       kind: "busy",
       message: "Google Gemini is busy right now. Try again in a minute, or build it by hand.",
     })
+    expect(await scanAgenda([page], { fetch: respond(429, { error: "quota_used_up", message: "x", retryAfterSeconds: 49_874 }), online })).toMatchObject({
+      kind: "quota_used_up",
+      message: "Today’s free Google Gemini scans are used up. Try again tomorrow, or build it by hand.",
+    })
   })
 })
 

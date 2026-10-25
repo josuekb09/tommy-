@@ -14,7 +14,7 @@ export type AgendaImage = z.infer<typeof agendaImage>
 export const usage = z.object({ inputTokens: z.number(), outputTokens: z.number(), thoughtTokens: z.number() })
 export type Usage = z.infer<typeof usage>
 
-export const scanErrorKinds = ["rate_limited", "busy", "unreadable", "bad_request", "not_configured", "unavailable", "timeout"] as const
+export const scanErrorKinds = ["rate_limited", "quota_used_up", "busy", "unreadable", "bad_request", "not_configured", "unavailable", "timeout"] as const
 export type ScanErrorKind = (typeof scanErrorKinds)[number]
 
 export const scanSuccess = z.object({ agenda: rawAgenda, model: z.string(), usage, ms: z.number() })
@@ -25,6 +25,7 @@ export type ScanFailure = z.infer<typeof scanFailure>
 /** What the Timer reads when a scan fails. Every message offers the manual builder. */
 export const scanMessages: Record<ScanErrorKind, string> = {
   rate_limited: "Scan limit reached, try again in a minute, or build it by hand.",
+  quota_used_up: "Today’s free Google Gemini scans are used up. Try again tomorrow, or build it by hand.",
   busy: "Google Gemini is busy right now. Try again in a minute, or build it by hand.",
   unreadable: "Tommy couldn’t read this photo as an agenda. Try a sharper, straighter photo, or build it by hand.",
   bad_request: "These files can’t be scanned. Use up to 4 photos (JPEG, PNG, WEBP or HEIC) or a PDF, or build it by hand.",

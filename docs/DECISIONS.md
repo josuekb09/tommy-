@@ -152,3 +152,24 @@ Gemini 2.x gets `thinkingBudget` instead of `thinkingLevel`; override with the
 `GEMINI_FALLBACK_MODELS` env var, empty for none), `server/extract/handler.ts`,
 `src/engine/import/wire.ts`, `src/ui/scan-api.ts`, and their tests. The
 accuracy bench turns fallbacks off so it measures the chosen model.
+
+## 2026-10-25 — A used-up daily quota says so; every model's cause is logged
+
+**Decision.** A 429 whose quota is per day (`QuotaFailure` quotaId with
+`PerDay`, or a retry delay over an hour) is its own kind, `quota_used_up`:
+"Today’s free Google Gemini scans are used up. Try again tomorrow, or build it
+by hand." Any 5xx except 504 counts as `busy` (502 and Cloudflare's 524
+included), and a 504 from Google moves on to the next model while the 140 s
+deadline has time left. When every model fails, the Timer is told about the one
+that clears soonest (busy, then timeout, unavailable, per-minute limit, daily
+quota); a refused key or request stops at once and is reported as itself. The
+log line lists every model tried with its kind and Google's message.
+
+**Why.** After the fallback change the preview still failed: 3.8-flash had used
+its daily free quota (resets in ~14 h), 3.5-flash answered 503 "high demand",
+and the Timer read "try again in a minute", which was not true. Only the main
+model's error was logged, so why the fallbacks failed could not be seen. A 524
+from the main model skipped the fallbacks entirely.
+
+**Where it applies.** `server/extract/gemini.ts` (`dailyQuota`, `soonest`),
+`server/extract/handler.ts`, `src/engine/import/wire.ts`, and their tests.

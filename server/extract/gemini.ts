@@ -1,13 +1,13 @@
 import { extractionJsonSchema, rawAgenda } from "../../src/engine/import/extraction"
-import type { AgendaImage } from "../../src/engine/import/wire"
+import type { AgendaImage, ScanErrorKind } from "../../src/engine/import/wire"
 import { extractionInstructions } from "./prompt"
 import { ExtractError, type AgendaExtractor, type ExtractResult } from "./provider"
 
 /** The current stable Flash model on the Gemini API's free tier. Override with GEMINI_MODEL. */
 export const DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
 /**
- * Free-tier models tried in order when the main one is busy (5xx) or out of
- * free quota (429). Each model has its own free quota, so this stays at zero
+ * Free-tier models tried in order when the main one is busy (5xx), timed out
+ * (504) or out of free quota (429). Each model has its own free quota, so this stays at zero
  * cost. Override with GEMINI_FALLBACK_MODELS (comma-separated, empty for none).
  */
 export const DEFAULT_FALLBACK_MODELS = ["gemini-3.5-flash", "gemini-2.5-flash"]
@@ -59,7 +59,9 @@ type GeminiResponse = {
   usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number }
   modelVersion?: string
 }
-type GeminiError = { error?: { code?: number; status?: string; message?: string; details?: { "@type"?: string; retryDelay?: string }[] } }
+type GeminiError = {
+  error?: { code?: number; status?: string; message?: string; details?: { "@type"?: string; retryDelay?: string; violations?: { quotaId?: string }[] }[] }
+}
 
 /** "37s" or "1.5s" from a RetryInfo detail, rounded up to whole seconds. */
 export function retryAfter(body: GeminiError, header: string | null): number | undefined {
@@ -68,15 +70,24 @@ export function retryAfter(body: GeminiError, header: string | null): number | u
   return Number.isFinite(seconds) ? Math.max(1, Math.ceil(seconds)) : undefined
 }
 
-/** Busy or out of free quota: worth trying the next model. */
-const tryNext = (error: unknown) => error instanceof ExtractError && (error.kind === "busy" || error.kind === "rate_limited")
+/** A daily free quota, or a wait of over an hour: "try again in a minute" would not be true. */
+export function dailyQuota(body: GeminiError, seconds: number | undefined): boolean {
+  const quotas = body.error?.details?.flatMap(detail => detail.violations ?? []).map(violation => violation.quotaId ?? "") ?? []
+  return quotas.some(quota => /PerDay/i.test(quota)) || (seconds ?? 0) > 3_600
+}
+
+/** Worth trying the next model: busy, out of free quota, or timed out on Google's side while our deadline has time left. */
+const tryNext = (error: unknown, signal: AbortSignal) =>
+  error instanceof ExtractError && (["busy", "rate_limited", "quota_used_up"].includes(error.kind) || (error.kind === "timeout" && !signal.aborted))
+/** When every model failed, the Timer is told about the one that clears soonest. */
+const soonest: ScanErrorKind[] = ["busy", "timeout", "unavailable", "rate_limited", "quota_used_up"]
 
 /**
  * Agenda extraction with Google Gemini through its REST API (plain fetch, so
  * it runs the same in a Cloudflare Pages Function and in Node). The reply is
  * constrained by the extraction schema and validated again with zod. When the
- * main model is busy or out of free quota, the fallback models are tried in
- * order; if all fail, the main model's error is reported.
+ * main model is busy, out of free quota or timed out, the fallback models are
+ * tried in order; if all fail, the failure that clears soonest is reported.
  */
 export function createGeminiExtractor(options: GeminiOptions): AgendaExtractor {
   const model = options.model || DEFAULT_GEMINI_MODEL
@@ -101,12 +112,15 @@ export function createGeminiExtractor(options: GeminiOptions): AgendaExtractor {
     const body = (await response.json().catch(() => ({}))) as GeminiResponse & GeminiError
     if (!response.ok) {
       const detail = `${model}: ${body.error?.message ?? response.statusText}`
-      if (response.status === 429)
-        throw new ExtractError("rate_limited", `Rate limited: ${detail}`, retryAfter(body, response.headers.get("retry-after")) ?? 60)
+      if (response.status === 429) {
+        const seconds = retryAfter(body, response.headers.get("retry-after"))
+        if (dailyQuota(body, seconds)) throw new ExtractError("quota_used_up", `Daily free quota used up: ${detail}`, seconds)
+        throw new ExtractError("rate_limited", `Rate limited: ${detail}`, seconds ?? 60)
+      }
       if (response.status === 401 || response.status === 403) throw new ExtractError("not_configured", `The API key was refused: ${detail}`)
       if (response.status === 400) throw new ExtractError("bad_request", `The request was refused: ${detail}`)
       if (response.status === 504) throw new ExtractError("timeout", `The model timed out: ${detail}`)
-      if (response.status === 500 || response.status === 503) throw new ExtractError("busy", `The model is busy (${response.status}): ${detail}`)
+      if (response.status >= 500) throw new ExtractError("busy", `The model is busy (${response.status}): ${detail}`)
       throw new ExtractError("unavailable", `The model is unavailable (${response.status}): ${detail}`)
     }
     if (body.promptFeedback?.blockReason) throw new ExtractError("unreadable", `The model declined the photo (${body.promptFeedback.blockReason}).`)
@@ -134,21 +148,30 @@ export function createGeminiExtractor(options: GeminiOptions): AgendaExtractor {
     }
   }
 
+  /** The chosen failure, its message listing every model tried so the function log shows each cause. */
+  function reported(chosen: ExtractError, failures: ExtractError[]): never {
+    if (failures.length === 1) throw chosen
+    throw new ExtractError(chosen.kind, failures.map(failure => `${failure.kind}: ${failure.message}`).join(" | "), chosen.retryAfterSeconds)
+  }
+
   return {
     model,
     async extractAgenda(images) {
       const started = now()
       const signal = AbortSignal.timeout(options.timeoutMs ?? 140_000)
-      let first: unknown
+      const failures: ExtractError[] = []
       for (const candidate of models) {
         try {
           return { ...(await attempt(candidate, images, signal)), ms: now() - started }
         } catch (error) {
-          first ??= error
-          if (!tryNext(error)) break
+          if (!(error instanceof ExtractError)) throw error
+          failures.push(error)
+          // A refused key or request is the real blocker: say that, not an earlier busy model.
+          if (!tryNext(error, signal)) return reported(error, failures)
         }
       }
-      throw first
+      const chosen = failures.reduce((best, error) => (soonest.indexOf(error.kind) < soonest.indexOf(best.kind) ? error : best))
+      return reported(chosen, failures)
     },
   }
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 import { extractionJsonSchema } from "../../src/engine/import/extraction"
 import { toastedSample } from "../../src/engine/import/samples"
-import { createGeminiExtractor, geminiRequest, retryAfter } from "./gemini"
+import { createGeminiExtractor, dailyQuota, geminiRequest, retryAfter } from "./gemini"
 import { ExtractError } from "./provider"
 
 const page = { mimeType: "image/jpeg" as const, data: "AAAA" }
@@ -104,12 +104,36 @@ describe("Gemini reply", () => {
     expect(retryAfter({}, null)).toBeUndefined()
   })
 
+  it("tells a used-up daily free quota apart from the per-minute limit", async () => {
+    const error = await failure(
+      reply(
+        {
+          error: {
+            code: 429,
+            message: "You exceeded your current quota",
+            details: [
+              { "@type": "type.googleapis.com/google.rpc.QuotaFailure", violations: [{ quotaId: "GenerateRequestsPerDayPerProjectPerModel-FreeTier" }] },
+              { "@type": "type.googleapis.com/google.rpc.RetryInfo", retryDelay: "49874s" },
+            ],
+          },
+        },
+        { status: 429 },
+      ),
+    )
+    expect([error.kind, error.retryAfterSeconds]).toEqual(["quota_used_up", 49_874])
+    expect(dailyQuota({}, 7_200)).toBe(true)
+    expect(dailyQuota({ error: { details: [{ violations: [{ quotaId: "GenerateRequestsPerMinutePerProjectPerModel-FreeTier" }] }] } }, 30)).toBe(false)
+  })
+
   it.each([
     [reply({ error: { message: "API key not valid" } }, { status: 403 }), "not_configured"],
     [reply({ error: { message: "schema too complex" } }, { status: 400 }), "bad_request"],
     [reply({ error: { message: "high demand" } }, { status: 503 }), "busy"],
     [reply({ error: { message: "internal" } }, { status: 500 }), "busy"],
-    [reply({ error: { message: "bad gateway" } }, { status: 502 }), "unavailable"],
+    [reply({ error: { message: "bad gateway" } }, { status: 502 }), "busy"],
+    [reply({}, { status: 524 }), "busy"],
+    [reply({ error: { message: "deadline" } }, { status: 504 }), "timeout"],
+    [reply({ error: { message: "teapot" } }, { status: 418 }), "unavailable"],
     [ok("not json"), "unreadable"],
     [ok(JSON.stringify({ lines: "nope" })), "unreadable"],
     [reply({ candidates: [{ content: { parts: [{ text: "{" }] }, finishReason: "MAX_TOKENS" }] }), "unreadable"],
@@ -123,6 +147,16 @@ describe("Gemini reply", () => {
 describe("Fallback models", () => {
   const busy = () => reply({ error: { status: "UNAVAILABLE", message: "This model is currently experiencing high demand." } }, { status: 503 })
   const quota = () => reply({ error: { status: "RESOURCE_EXHAUSTED", message: "Quota exceeded" } }, { status: 429 })
+  const daily = () =>
+    reply(
+      {
+        error: {
+          message: "You exceeded your current quota",
+          details: [{ "@type": "type.googleapis.com/google.rpc.QuotaFailure", violations: [{ quotaId: "GenerateRequestsPerDayPerProjectPerModel-FreeTier" }] }],
+        },
+      },
+      { status: 429 },
+    )
   const run = (replies: (() => Response)[], fallbackModels?: string[]) => {
     const fetch = vi.fn(async () => replies.shift()!())
     const extractor = createGeminiExtractor({ apiKey: "test-key", fetch, ...(fallbackModels && { fallbackModels }) })
@@ -138,10 +172,25 @@ describe("Fallback models", () => {
     expect(scan.bodies()[2].generationConfig.thinkingConfig).toEqual({ thinkingBudget: 4_096 })
   })
 
-  it("reports the main model's failure when every model fails", async () => {
-    const scan = run([busy, quota, quota])
-    await expect(scan.promise).rejects.toMatchObject({ kind: "busy" })
+  it("reports the failure that clears soonest, and every model's cause, when every model fails", async () => {
+    const scan = run([daily, busy, quota])
+    const error = (await scan.promise.catch(error => error)) as ExtractError
+    expect(error.kind).toBe("busy")
+    expect(error.message).toMatch(/^quota_used_up: .*gemini-3\.8-flash.* \| busy: .*gemini-3\.5-flash.* \| rate_limited: .*gemini-2\.5-flash/)
     expect(scan.models()).toHaveLength(3)
+  })
+
+  it("says the daily free quota is used up only when it is for every model", async () => {
+    await expect(run([daily, daily, daily]).promise).rejects.toMatchObject({ kind: "quota_used_up" })
+  })
+
+  it("tries the next model when Google times out, and reports a refused key over an earlier busy model", async () => {
+    const timedOut = run([() => reply({}, { status: 504 }), () => ok(JSON.stringify(toastedSample))])
+    await timedOut.promise
+    expect(timedOut.models()).toEqual(["gemini-3.8-flash", "gemini-3.5-flash"])
+    const refused = run([busy, () => reply({ error: { message: "API key not valid" } }, { status: 403 })])
+    await expect(refused.promise).rejects.toMatchObject({ kind: "not_configured" })
+    expect(refused.models()).toEqual(["gemini-3.8-flash", "gemini-3.5-flash"])
   })
 
   it("does not try other models for a refused key or a refused request", async () => {
