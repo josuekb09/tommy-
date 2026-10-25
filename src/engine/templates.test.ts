@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest"
 import type { Meeting } from "../domain"
 import { agendaWarnings, orderedItems } from "./agenda"
 import { defaultRules, profileFor } from "./profiles"
+import { buildDraft, draftToSegments } from "./import/build"
+import type { RawAgenda } from "./import/extraction"
+import { capeTownSample, pinelandsSample, toastedSample } from "./import/samples"
 import { builtInTemplates, segmentKinds, segmentsFromTemplate, templateFromMeeting } from "./templates"
 
 const counter = () => {
@@ -19,37 +22,61 @@ describe("built-in templates", () => {
     const items = template.segments.flatMap(segment => segment.items)
     expect(items.every(item => item.personName === "" && !item.personId && !item.guest)).toBe(true)
     expect(items.some(item => item.role === "TableTopicsSpeaker")).toBe(false)
-    expect([...template.segments.map(s => s.kind)].sort()).toEqual([...segmentKinds].sort())
+    // Every kind is there (a kind may repeat, e.g. two "other" blocks).
+    expect([...new Set(template.segments.map(s => s.kind))].sort()).toEqual([...segmentKinds].sort())
     expect(agendaWarnings(asMeeting(template.segments))).toEqual([])
   })
 
-  it("ToastED: a 1:00 brief before each speech, the evaluation later, timings as printed", () => {
+  // The speeches, briefs, evaluations and Table Topics of each built-in must
+  // match what the club's real agenda says, read through the import clean-up.
+  const signature = (segments: Meeting["segments"]) => {
+    const items = orderedItems(asMeeting(segments))
+    const keyRoles = new Set(["Speaker", "EvaluatorBrief", "Evaluator", "GeneralEvaluator", "TableTopicsMaster"])
+    const kept = items.filter(item => keyRoles.has(item.role))
+    const speeches = kept.filter(item => item.role === "Speaker").map(item => item.id)
+    return kept.map(item => {
+      const kind = segments.find(segment => segment.items.includes(item))!.kind
+      const timing =
+        item.timed === false ? "untimed" : item.timing.redOnly ? `up to ${item.timing.red}` : `${item.timing.green}-${item.timing.amber}-${item.timing.red}`
+      const pairs = item.evaluatesItemId ? ` → speech ${speeches.indexOf(item.evaluatesItemId) + 1}` : ""
+      return `${kind} ${item.role} ${timing}${pairs}`
+    })
+  }
+  const fromSample = (sample: RawAgenda) => {
+    let n = 0
+    return draftToSegments(buildDraft(sample, { rules: defaultRules, people: [] }), () => `d-${++n}`)
+  }
+  it.each([
+    ["ToastED", toastedSample],
+    ["Cape Town", capeTownSample],
+    ["Pinelands", pinelandsSample],
+  ] as const)("%s matches the club's real agenda: order, timings and pairings", (name, sample) => {
+    const template = builtInTemplates.find(t => t.name === name)!
+    expect(signature(template.segments)).toEqual(signature(fromSample(sample)))
+  })
+
+  it("ToastED: a 1:00 brief just before each speech, and no General Evaluator", () => {
     const [toasted] = builtInTemplates
-    const order = orderedItems(asMeeting(toasted.segments)).map(
-      item => `${item.role} ${item.timing.redOnly ? `up to ${item.timing.red}` : `${item.timing.green}-${item.timing.red}`}`,
-    )
-    expect(order).toEqual([
-      "President up to 120",
-      "EvaluatorBrief up to 60",
-      "Speaker 240-360",
-      "EvaluatorBrief up to 60",
-      "Speaker 300-420",
-      "EvaluatorBrief up to 60",
-      "Speaker 300-420",
-      "Other up to 900",
-      "Evaluator 120-180",
-      "Evaluator 120-180",
-      "Evaluator 120-180",
-      "GeneralEvaluator up to 300",
-      "Timer up to 60",
-      "AhCounter up to 60",
-      "Grammarian up to 60",
+    expect(signature(toasted.segments)).toEqual([
+      "prepared_speeches EvaluatorBrief up to 60 → speech 1",
+      "prepared_speeches Speaker 240-300-360",
+      "prepared_speeches EvaluatorBrief up to 60 → speech 2",
+      "prepared_speeches Speaker 300-360-420",
+      "prepared_speeches EvaluatorBrief up to 60 → speech 3",
+      "prepared_speeches Speaker 300-360-420",
+      "table_topics TableTopicsMaster untimed",
+      "evaluations Evaluator 120-150-180 → speech 1",
+      "evaluations Evaluator 120-150-180 → speech 2",
+      "evaluations Evaluator 120-150-180 → speech 3",
     ])
   })
 
-  it("Cape Town runs evaluations before Table Topics", () => {
+  it("Cape Town runs evaluations before Table Topics; Pinelands has no Table Topics on its agenda", () => {
     const kinds = builtInTemplates[1].segments.map(s => s.kind)
     expect(kinds.indexOf("evaluations")).toBeLessThan(kinds.indexOf("table_topics"))
+    const pinelands = builtInTemplates[2]
+    expect(pinelands.segments.find(s => s.kind === "table_topics")!.items).toEqual([])
+    expect(pinelands.segments.at(-1)!.kind).toBe("table_topics")
   })
 })
 
