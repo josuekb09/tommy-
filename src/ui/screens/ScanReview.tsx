@@ -54,6 +54,7 @@ export function ScanSheet({ data, close, scanned }: { data: AppData; close: () =
       <p className="sheet-note">
         Take a photo of the printed agenda, or pick up to 4 photos or a PDF. You check every row before it becomes the meeting. Needs an internet connection.
       </p>
+      <p className="sheet-note scan-notice">Photos are sent to Google Gemini’s free service, which may use them to improve its products.</p>
       <label className="field-label">
         Agenda pages
         <input

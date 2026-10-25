@@ -39,7 +39,7 @@ them would publish members' names on a public branch. The eval bench reads
 `fixtures/` locally; CI runs on mocked responses instead.
 
 **Where it applies.** `.gitignore` entry; eval script
-(`scripts/eval-agendas.ts`, forthcoming) reads from the local path only.
+(`scripts/eval-agendas.test.ts`, run with `npm run eval:agendas`) reads from the local path only; its `.eval-cache/` and `eval-results/` hold names too and are gitignored.
 
 ## 2026-10-25 — Gemini free tier only; photos go via /api with a pre-scan notice
 
@@ -84,5 +84,49 @@ Table Topics.
 invent names from an attending list or guess from blank rows.
 
 **Where it applies.** `src/engine/import/build.ts` (filters nameless Table
-Topics items); the Meeting screen's Table Topics quick-add; the pending
-review screen (phase 8c).
+Topics items); the Meeting screen's Table Topics quick-add; the review
+screen (phase 8c) never adds Table Topics speakers.
+
+## 2026-10-25 — The scan review blocks on open flags, not on confidence alone
+
+**Decision.** "Use this agenda" is enabled only when every flag from the
+clean-up layer is fixed (its one-tap suggestion, or typing the name) or kept
+as read. Low model confidence becomes a flag in `build.ts` (below 0.8), so
+the review has one rule. Removing a speech drops its evaluator's pairing and
+adds a new flag rather than silently re-pairing.
+
+**Why.** The Timer must look at every doubtful row once, but a correct row
+should cost one tap, never a retype. Re-pairing on delete would be a guess.
+
+**Where it applies.** `src/engine/import/review.ts` (pure, unit tested);
+`src/ui/screens/ScanReview.tsx`; `tests/e2e/scan.spec.ts`.
+
+## 2026-10-25 — The corrections log stays on the device
+
+**Decision.** Each confirmed scan writes one `importLog` row (Dexie schema
+v2): the draft as read, the draft as confirmed, and counts per kind of
+change. It is not part of the export file and is never sent anywhere.
+
+**Why.** It is there to see where the scan needs correcting (phase 10). It
+holds member names, so it follows the same rule as `fixtures/`.
+
+**Where it applies.** `src/storage/db.ts` (`importLog`, not in
+`dataTables`); `repo.imports.confirm` writes it in the same transaction that
+creates the meeting.
+
+## 2026-10-25 — Built-in templates follow the real agendas, untimed where nothing is printed
+
+**Decision.** Built-in templates follow the fixture agendas: speech, brief,
+evaluation and Table Topics order, timings and pairings come from what is
+printed, checked by a test against the sample transcriptions. No template has
+a General Evaluator (none of the three agendas has one). A role the agenda
+lists with no time (all of Pinelands' opening and reports, Cape Town's
+reports) is untimed, as the import would read it. Toastmaster link-ins, breaks
+and mid-meeting Timer reports are left out.
+
+**Why.** "`profileFromRange` never guesses" applies to templates too: a
+default 1:00 for a role the club does not time would put wrong signals in
+front of the speaker. Link-ins would only add rows the Timer does not report.
+
+**Where it applies.** `src/engine/templates.ts`; `src/engine/templates.test.ts`
+("matches the club's real agenda").

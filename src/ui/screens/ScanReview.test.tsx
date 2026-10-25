@@ -33,6 +33,8 @@ async function scanPhoto() {
   await user.click(screen.getByRole("button", { name: "New meeting" }))
   await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Scan a printed agenda/ }))
   const sheet = screen.getByRole("dialog", { name: "Scan an agenda" })
+  // Before anything is sent, the sheet says where the photo goes.
+  expect(within(sheet).getByText("Photos are sent to Google Gemini’s free service, which may use them to improve its products.")).toBeTruthy()
   await user.upload(within(sheet).getByLabelText("Agenda pages"), photo())
   await user.click(within(sheet).getByRole("button", { name: "Read the agenda" }))
 }

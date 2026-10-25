@@ -41,18 +41,21 @@ src/engine/    pure logic: no React, no DOM, no storage. The clock is always inj
                speech.ts (read-aloud sentences), share.ts (plain WhatsApp text)
   audio.ts     threshold tone (the only browser-API module in engine/; it stays outside the timing core)
   import/      agenda import: extraction.ts (the model's JSON schema, zod), roles.ts (printed role synonyms),
-               build.ts (clean-up: timings, pairing, briefs, names, schedule check, flags), wire.ts (API contract)
-src/storage/   db.ts (Dexie schema), repository.ts (the only code that touches IndexedDB),
+               build.ts (clean-up: timings, pairing, briefs, names, schedule check, flags), review.ts (the Timer's
+               fixes before confirming), wire.ts (API contract), samples.ts (test agendas)
+src/storage/   db.ts (Dexie schema, incl. the local-only importLog), repository.ts (the only code that touches IndexedDB),
                schema.ts (zod export format), export-import.ts, migrate-legacy.ts (v1 → v2, once)
 src/ui/        App.tsx (shell + hash routes), hooks.ts, components.tsx, runtime.ts (db, repo, clock),
                timers.ts (one engine timer per agenda item), signals.tsx (label, icon, pattern per signal),
                people.tsx (PersonField, MembersCard), timing-field.tsx (typed agenda time + live preview),
                read-aloud.ts (pause/skip/voice), screens/PrintLog.tsx (#/print, Timer's log for paper),
                speaker-feed.ts + signal-channel.ts (publish to speaker windows), present.ts (windows, PNGs),
-               screens/ (incl. SpeakerView for #/speaker and #/zoom)
+               scan-api.ts + scan-images.ts (send pages to /api/parse-agenda),
+               screens/ (incl. SpeakerView for #/speaker and #/zoom, ScanReview for the scan sheet and review)
 server/extract/ provider interface (AgendaExtractor), Gemini extractor, prompt, /api handler (shared by functions/ and scripts/)
 functions/     Cloudflare Pages Functions: api/parse-agenda.ts (the only place the model API key is used)
-scripts/       check-secrets.mjs (fails the build if a key or provider call reaches dist/)
+scripts/       check-secrets.mjs (fails the build if a key or provider call reaches dist/),
+               eval-agendas.test.ts (accuracy bench on local fixtures: npm run eval:agendas, not in npm test)
 test-vectors/  timing.json: shared timing scenarios, also run by the device firmware
 tests/e2e/     Playwright specs
 docs/          AUDIT.md, TIMING_SPEC.md (normative timing rules for app and firmware), SIGNAL_OUTPUT.md
@@ -98,6 +101,7 @@ npm run preview        # serve dist/ at http://localhost:4173
 npm run test:e2e       # Playwright (builds and previews automatically)
 npm run dev:api        # build + wrangler pages dev on :8788 (serves /api with GEMINI_API_KEY from .env.local)
 npm run check:secrets  # scan dist/ for keys and direct provider calls (also runs at the end of build)
+npm run eval:agendas   # accuracy bench: real Gemini calls on fixtures/agendas (cached in .eval-cache/)
 ```
 
 Before saying a task is done, run: `npm run typecheck && npm run lint && npm test && npm run test:e2e`.
