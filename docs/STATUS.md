@@ -5,7 +5,7 @@ Working toward being ready to run as the Timer at a real meeting on Wednesday 20
 ## Where to try it
 
 - **Production (main):** https://tommy-21n.pages.dev/
-- **Preview (rebuild):** _pending push and Pages setup; link to be added when live._
+- **Preview (rebuild):** pushed to https://github.com/josuekb09/tommy-/tree/rebuild. If Cloudflare Pages is set to build non-production branches, the preview URL will be `https://rebuild.tommy-21n.pages.dev/` (or `https://<commit>.tommy-21n.pages.dev/` per build). `GEMINI_API_KEY` must be set as a preview secret for agenda scan to work.
 
 ## What is ready
 
@@ -46,5 +46,5 @@ Then on the preview URL, mobile:
 
 ## Known blockers
 
-- The Pages preview for `rebuild` is not deployed yet; needs a push and a one-time Pages setup with `GEMINI_API_KEY` as a preview secret.
+- Pages preview setup: `rebuild` is pushed, but non-production builds and `GEMINI_API_KEY` as a preview secret need to be enabled once in the Cloudflare dashboard.
 - The review screen (phase 8c) is not wired in: the Scan button on the Meeting screen currently sends the user straight through without a review step.
