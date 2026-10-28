@@ -6,15 +6,16 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: "prompt",
+      registerType: "autoUpdate",
       includeAssets: ["Tommy-app-icon.svg", "Tommy-logo-dark.svg", "Tommy-logo-light.svg", "Tommy-mark.svg"],
       workbox: {
         globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api\//],
-        // skipWaiting: new SW takes over immediately so a phone gets the update on next open.
-        // clientsClaim: takes control of existing tabs right after activation.
-        // The "Update now" banner in App.tsx then reloads once, safely between speeches.
+        // skipWaiting: new SW takes over immediately on the next open.
+        // clientsClaim: new SW controls all open tabs right after activation.
+        // autoUpdate (above): when the new SW claims control, the page reloads once.
+        // Every timing action is in IndexedDB so a mid-speech reload loses nothing.
         skipWaiting: true,
         clientsClaim: true,
       },

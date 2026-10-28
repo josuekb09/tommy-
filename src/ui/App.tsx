@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { ClipboardList, Clock3, ListOrdered, Settings2 } from "lucide-react"
-import { useRegisterSW } from "virtual:pwa-register/react"
 import { useAppData, useRoute, useWriterLock, type Route } from "./hooks"
 import { MeetingScreen } from "./screens/MeetingScreen"
 import { PrintLog } from "./screens/PrintLog"
@@ -36,11 +35,6 @@ function TimerApp({ route, go }: { route: Route; go: (route: Route) => void }) {
   useSpeakerFeed(data?.meeting ? { ...data, meeting: data.meeting } : undefined, selectedId, explanation)
   const [toast, setToast] = useState<{ message: string; action?: { label: string; onClick: () => void } }>()
   const notify = useCallback((message: string, action?: { label: string; onClick: () => void }) => setToast({ message, ...(action && { action }) }), [])
-  const {
-    needRefresh: [needRefresh],
-    updateServiceWorker,
-  } = useRegisterSW()
-
   useEffect(() => {
     if (!toast) return
     // A toast with an Undo button stays visible longer: the Timer needs the time to spot it and tap it.
@@ -78,14 +72,6 @@ function TimerApp({ route, go }: { route: Route; go: (route: Route) => void }) {
       {lock === "other" && (
         <p className="app-banner" role="alert">
           Tommy is open in another tab. This tab is read-only until you close the other one.
-        </p>
-      )}
-      {needRefresh && (
-        <p className="app-banner" role="status">
-          A new version of Tommy is ready.{" "}
-          <button className="text-button" onClick={() => void updateServiceWorker(true)}>
-            Update now
-          </button>
         </p>
       )}
       {route === "meeting" && (

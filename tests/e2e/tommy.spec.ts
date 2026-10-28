@@ -108,15 +108,23 @@ test("signals change at exact thresholds and are announced in text, not colour a
   await addToAgenda(page, "Table Topics", "Tess Topics")
   await page.getByRole("button", { name: /^Tess Topics/ }).click()
   await page.getByRole("button", { name: "Start", exact: true }).click()
+  const stage = page.locator(".ts-stage")
   await page.clock.runFor(59_000)
   await expect(page.locator(".ts-signal-label")).toHaveText("READY")
+  await expect(stage).not.toHaveClass(/signal-green/)
   await page.clock.runFor(1_000)
+  // 1:00 — green
   await expect(page.locator(".ts-signal-label")).toHaveText("GREEN")
   await expect(page.locator(".ts-signal svg")).toHaveCount(1)
+  await expect(stage).toHaveClass(/signal-green/)
   await page.clock.runFor(30_000)
+  // 1:30 — amber
   await expect(page.locator(".ts-signal-label")).toHaveText("AMBER")
+  await expect(stage).toHaveClass(/signal-amber/)
   await page.clock.runFor(30_000)
+  // 2:00 — red
   await expect(page.locator(".ts-signal-label")).toHaveText("RED")
+  await expect(stage).toHaveClass(/signal-red/)
   await expect(page.getByRole("status").filter({ hasText: "Time limit reached" })).toHaveCount(1)
 })
 

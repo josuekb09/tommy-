@@ -3,6 +3,7 @@ import type { TimingProfile } from "../../domain"
 import { createTimer, type TimerEvent } from "./timer"
 
 const speech: TimingProfile = { green: 300, amber: 360, red: 420, graceSeconds: 30, disqualifyEnabled: false }
+const tableTopics: TimingProfile = { green: 60, amber: 90, red: 120, graceSeconds: 0, disqualifyEnabled: false }
 
 function setup(actions = [] as Parameters<typeof createTimer>[0]["actions"]) {
   let now = 0
@@ -44,6 +45,23 @@ describe("timer events", () => {
       { type: "offsetApplied", at: 301_000, elapsedMs: 296_000, ms: -5_000 },
       { type: "signalChanged", at: 301_000, elapsedMs: 296_000, from: "green", to: "none" },
     ])
+  })
+
+  it("signal progresses none→green→amber→red→overtime for Table Topics thresholds", () => {
+    let now = 0
+    const timer = createTimer({ clock: () => now, profile: tableTopics })
+    timer.dispatch({ type: "start" })   // started at t=0
+    expect(timer.signal()).toBe("none") // 0 ms elapsed
+    now = 59_999
+    expect(timer.signal()).toBe("none") // 59.999 s — just before green
+    now = 60_000
+    expect(timer.signal()).toBe("green") // 1:00 — exactly at green
+    now = 90_000
+    expect(timer.signal()).toBe("amber") // 1:30
+    now = 120_000
+    expect(timer.signal()).toBe("red")      // 2:00 exactly
+    now = 120_001
+    expect(timer.signal()).toBe("overtime") // 2:00.001 — past grace (graceSeconds=0)
   })
 
   it("stops notifying after unsubscribe", () => {
