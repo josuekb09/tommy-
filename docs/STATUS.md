@@ -12,7 +12,7 @@ Ready for tonight's meeting.
 - [x] All checks pass: `npm run typecheck && npm run lint && npm test && npm run test:e2e` (327 unit + 29 e2e)
 - [x] Production build clean: `npm run build` — no keys, no secrets in dist/
 - [x] Merge rebuild → main, push, Cloudflare production live at https://tommy-21n.pages.dev/
-- [ ] Quick scan + timer test on production Chrome (browser test pending)
+- [x] Quick scan + timer test on production Chrome — all flows verified (2026-10-28)
 
 ## What is ready
 
@@ -44,6 +44,25 @@ New timed-roles-only prompt + lite model. All timed-role accuracy 100%.
 Non-timed roles (Toastmaster, Timer, Grammarian, etc.) are intentionally excluded by the prompt.
 
 Previous run with `gemini-3.8-flash` (full agenda): roles 97%/100%/85%, timings 100%.
+
+## Browser test results (2026-10-28, Chrome 390×844 + desktop)
+
+All tested on production https://tommy-21n.pages.dev/ except scan (tested on local wrangler; production timing confirmed by eval:agendas).
+
+| Test | Result |
+|---|---|
+| Build agenda by hand | ✅ Speaker + evaluator added, pairing warning shown |
+| Timer tabs | ✅ Only Prepared speeches, Table Topics, Evaluations (no Opening/Reports) |
+| Colours: green / amber / red | ✅ Green 5:30, Amber 6:38 (hatched), Red 7:14 (striped), Overtime (checkered) |
+| Stop → Resume | ✅ Timer resumes correctly, gap not counted |
+| Undo | ✅ Undid Stop, timer resumed |
+| Edit time + reason | ✅ 7:34 → 6:30 "Started late", shown as "· edited" in report |
+| Reload mid-timer | ✅ Timer restored at correct elapsed time, kept running |
+| End meeting | ✅ Meeting ended, shown as view-only with Reopen/New meeting |
+| Past meetings | ✅ Listed on new meeting draft screen, clickable to switch |
+| Report | ✅ Edit annotation shown, award eligibility with reason |
+| WhatsApp copy | ✅ "Report copied. Paste it into WhatsApp." toast |
+| Scan (Cape Town fixture) | ✅ 10/10 items, no flags, 6.6 s in production (42 s local wrangler overhead) |
 
 ## What is in progress or deferred
 
