@@ -10,14 +10,14 @@ const keyOf = (review: ReturnType<typeof startReview>, name: string) => itemsOf(
 describe("scan review", () => {
   it("lists every flag and only allows confirming once each is fixed or kept", () => {
     let review = startReview(draft())
+    // Non-timed items (Grammarian, Timer, Toastmaster) are collapsed in OtherRolesSection; their flags don't block confirmation.
     expect(openFlags(review).map(({ item, flag }) => [item.personName || item.role, flag.field])).toEqual([
       ["Ada Lovel", "person"],
       ["Speaker", "person"],
-      ["Tia Timmer", "person"],
     ])
     expect(canConfirm(review)).toBe(false)
 
-    // The variant spelling has a one-tap fix.
+    // applySuggestion works on non-timed items too; it just isn't required for confirmation.
     const variant = keyOf(review, "Tia Timmer")
     review = applySuggestion(review, variant, 0)
     expect(itemsOf(review.draft).find(item => item.key === variant)!.personName).toBe("Tia Timer")

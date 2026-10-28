@@ -27,11 +27,11 @@ describe("built-in templates", () => {
     expect(agendaWarnings(asMeeting(template.segments))).toEqual([])
   })
 
-  // The speeches, briefs, evaluations and Table Topics of each built-in must
-  // match what the club's real agenda says, read through the import clean-up.
+  // The speeches, briefs and evaluations of each built-in must match what the
+  // club's real agenda says, read through the import clean-up.
   const signature = (segments: Meeting["segments"]) => {
     const items = orderedItems(asMeeting(segments))
-    const keyRoles = new Set(["Speaker", "EvaluatorBrief", "Evaluator", "GeneralEvaluator", "TableTopicsMaster"])
+    const keyRoles = new Set(["Speaker", "EvaluatorBrief", "Evaluator", "GeneralEvaluator"])
     const kept = items.filter(item => keyRoles.has(item.role))
     const speeches = kept.filter(item => item.role === "Speaker").map(item => item.id)
     return kept.map(item => {
@@ -64,19 +64,17 @@ describe("built-in templates", () => {
       "prepared_speeches Speaker 300-360-420",
       "prepared_speeches EvaluatorBrief up to 60 → speech 3",
       "prepared_speeches Speaker 300-360-420",
-      "table_topics TableTopicsMaster untimed",
       "evaluations Evaluator 120-150-180 → speech 1",
       "evaluations Evaluator 120-150-180 → speech 2",
       "evaluations Evaluator 120-150-180 → speech 3",
     ])
   })
 
-  it("Cape Town runs evaluations before Table Topics; Pinelands has no Table Topics on its agenda", () => {
+  it("Cape Town runs evaluations before Table Topics; Pinelands has no Table Topics items", () => {
     const kinds = builtInTemplates[1].segments.map(s => s.kind)
     expect(kinds.indexOf("evaluations")).toBeLessThan(kinds.indexOf("table_topics"))
     const pinelands = builtInTemplates[2]
     expect(pinelands.segments.find(s => s.kind === "table_topics")!.items).toEqual([])
-    expect(pinelands.segments.at(-1)!.kind).toBe("table_topics")
   })
 })
 

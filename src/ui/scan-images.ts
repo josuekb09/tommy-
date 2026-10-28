@@ -2,7 +2,8 @@ import { imageTypes, MAX_PAGE_BASE64, MAX_PAGES, type AgendaImage } from "../eng
 
 export type Page = { image: AgendaImage; previewUrl?: string; name: string }
 
-const LONG_SIDE = 2000
+/** Target long-side pixels for uploaded agenda photos: smaller = fewer tokens = faster scan. */
+const LONG_SIDE = 1600
 
 /**
  * Agenda files ready to send: photos are scaled to about 2000 px on the long
@@ -30,7 +31,7 @@ async function scaled(file: File): Promise<AgendaImage | undefined> {
     const canvas = new OffscreenCanvas(Math.round(bitmap.width * scale), Math.round(bitmap.height * scale))
     canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
     bitmap.close()
-    const blob = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.85 })
+    const blob = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.7 })
     return { mimeType: "image/jpeg", data: await base64(blob) }
   } catch {
     // HEIC on most browsers, or a damaged file: let the server try the original.

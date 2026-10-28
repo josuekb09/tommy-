@@ -389,7 +389,7 @@ describe("agenda scan import", () => {
     expect(items.some(item => "flags" in item || "source" in item)).toBe(false)
 
     const [log] = await repo.imports.log()
-    expect([log.meetingId, log.model, log.summary.flagsAccepted]).toEqual([meeting.id, "test-model", 3])
+    expect([log.meetingId, log.model, log.summary.flagsAccepted]).toEqual([meeting.id, "test-model", 2])
     expect(itemsOf(log.original)).toHaveLength(itemsOf(original).length)
   })
 })

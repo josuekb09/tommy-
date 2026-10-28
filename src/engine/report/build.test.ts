@@ -28,7 +28,6 @@ const timed = (agenda: Meeting, id: string, ms: number, extra: TimingAction[] = 
 const summary = (report: Report) => report.groups.map(group => [group.label, group.lines.map(line => `${line.name} ${line.time ?? "-"} ${line.statusLabel}`)])
 
 const agenda = meeting(
-  ["opening", [item("tm", "Toastmaster", "Tess")]],
   [
     "prepared_speeches",
     [item("b1", "EvaluatorBrief", "Eva", { evaluatesItemId: "s1" }), item("s1", "Speaker", "Ada"), item("s2", "Speaker", "Ben"), item("s3", "Speaker", "Cy")],
@@ -38,7 +37,6 @@ const agenda = meeting(
     [item("t1", "TableTopicsSpeaker", "Gia", { guest: true }), item("t2", "TableTopicsSpeaker", "Hal"), item("t3", "TableTopicsSpeaker", "Ivy")],
   ],
   ["evaluations", [item("e1", "Evaluator", "Eva", { evaluatesItemId: "s1" }), item("ge", "GeneralEvaluator", "Gus")]],
-  ["reports", [item("tr", "Timer", "Tom")]],
 )
 const records = [
   timed(agenda, "b1", 50_000),
@@ -55,10 +53,10 @@ const records = [
       { type: "start", at: 0 },
       { type: "reset", at: 5_000 },
     ],
-    agenda.segments[2].items[2].timing,
+    agenda.segments[1].items[2].timing,
   ),
   // Gus is still speaking.
-  buildRecord("ge", "m", [{ type: "start", at: 0 }], agenda.segments[3].items[1].timing),
+  buildRecord("ge", "m", [{ type: "start", at: 0 }], agenda.segments[2].items[1].timing),
 ]
 const rules: Pick<ClubRules, "withinRule" | "reportStyle" | "tableTopicsGuestsEligible"> = defaultRules
 
@@ -70,7 +68,6 @@ describe("report builder", () => {
       ["Prepared speeches", ["Ada 6:12 Within time", "Ben 7:45 Over time", "Cy - Not timed"]],
       ["Evaluations", ["Eva 0:50 Within time", "Eva 2:30 Within time", "Gus - Still timing"]],
       ["Table Topics", ["Gia 1:15 Within time", "Hal 0:30 Under time", "Ivy - Not timed"]],
-      ["Other", ["Tess - Not timed", "Tom - Not timed"]],
     ])
     const ada = report.groups[0].lines[0]
     expect(ada).toMatchObject({ roleLabel: "Speaker", range: "5:00 to 7:00", status: "within" })
@@ -85,9 +82,9 @@ describe("report builder", () => {
     expect(report.groups[0].lines[1].reason).toBe("Over time: 7:45 is over the 7:30 limit (7:00 plus 30 seconds grace).")
     expect(report.groups[2].lines[1].reason).toBe("Under time: 0:30 is under the 1:00 minimum.")
     const strict = { ...rules, withinRule: "strict" as const }
-    expect(outsideReason(450_000, agenda.segments[1].items[1], strict)).toBe("Over time: 7:30 is over the 7:00 limit.")
-    expect(outsideReason(280_000, agenda.segments[1].items[1], rules)).toBeUndefined()
-    expect(outsideReason(260_000, agenda.segments[1].items[1], rules)).toBe("Under time: 4:20 is under the 4:30 minimum (5:00 less 30 seconds grace).")
+    expect(outsideReason(450_000, agenda.segments[0].items[1], strict)).toBe("Over time: 7:30 is over the 7:00 limit.")
+    expect(outsideReason(280_000, agenda.segments[0].items[1], rules)).toBeUndefined()
+    expect(outsideReason(260_000, agenda.segments[0].items[1], rules)).toBe("Under time: 4:20 is under the 4:30 minimum (5:00 less 30 seconds grace).")
   })
 
   it("marks disqualified speakers, shows them, and gives the reason", () => {
@@ -123,6 +120,15 @@ describe("agenda-only lines", () => {
     const withIntro = meeting(["opening", [item("gi", "Grammarian", "Gus", { timed: false })]], ["prepared_speeches", [item("s1", "Speaker", "Ada")]])
     expect(buildReport(withIntro, [], rules).groups.flatMap(g => g.lines.map(l => l.name))).toEqual(["Ada"])
   })
+
+  it("non-timed roles (Toastmaster, Timer etc.) never appear even if timed flag is not set", () => {
+    const withOthers = meeting(
+      ["opening", [item("tm", "Toastmaster", "Tess")]],
+      ["prepared_speeches", [item("s1", "Speaker", "Ada")]],
+      ["reports", [item("tr", "Timer", "Tom")]],
+    )
+    expect(buildReport(withOthers, [], rules).groups.flatMap(g => g.lines.map(l => l.name))).toEqual(["Ada"])
+  })
 })
 
 describe("spoken report", () => {
@@ -157,9 +163,6 @@ describe("spoken report", () => {
       "Gia, 1 minute 15 seconds, within time.",
       "Hal, 30 seconds, under time.",
       "Ivy, not timed.",
-      "Other.",
-      "Tess, not timed.",
-      "Tom, not timed.",
       "Eligible for Best Speaker: Ada.",
       "Eligible for Best Table Topics: Gia.",
       "Eligible for Best Evaluator: Eva.",
@@ -169,7 +172,7 @@ describe("spoken report", () => {
 
 describe("share text", () => {
   it("is plain lines that read well with no formatting: no tables, no 0:00", () => {
-    const report = buildReport(meeting(...agenda.segments.slice(1, 3).map(s => [s.kind, s.items] as [SegmentKind, AgendaItem[]])), records, rules)
+    const report = buildReport(meeting(...agenda.segments.slice(0, 2).map(s => [s.kind, s.items] as [SegmentKind, AgendaItem[]])), records, rules)
     expect(shareText(report, agenda, "Riverside Toastmasters")).toBe(
       [
         "*Timer's report*",

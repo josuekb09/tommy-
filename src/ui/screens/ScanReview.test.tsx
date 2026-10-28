@@ -66,13 +66,11 @@ describe("Agenda scan review", () => {
     expect(JSON.parse(init.body).images[0].mimeType).toBe("image/jpeg")
 
     const status = screen.getByRole("status")
-    expect(status.textContent).toBe("8 items read3 to check")
+    expect(status.textContent).toBe("8 items read2 to check")
     const confirmButton = screen.getByRole("button", { name: "Use this agenda" }) as HTMLButtonElement
     expect(confirmButton.disabled).toBe(true)
     expect(screen.getByText("Name hard to read: check “Ada Lovel” on the photo.")).toBeTruthy()
 
-    // One-tap fix for a name spelled two ways.
-    await user.click(screen.getByRole("button", { name: "Use “Tia Timer”" }))
     // Typing a missing name.
     await user.type(screen.getByLabelText("Name for Speaker (Speaker 2) at 19:20"), "Ben Byte")
     await user.tab()
@@ -89,9 +87,8 @@ describe("Agenda scan review", () => {
     expect(meeting.theme).toBe("Beginnings")
     const names = meeting.segments.flatMap(segment => segment.items).map(item => item.personName)
     expect(names).toEqual(expect.arrayContaining(["Ada Lovel", "Ben Byte", "Eve One"]))
-    expect(names).not.toContain("Tia Timmer")
     const [log] = await repo.imports.log()
-    expect(log.summary).toMatchObject({ renamed: 2, suggestionsApplied: 1, flagsAccepted: 1 })
+    expect(log.summary).toMatchObject({ renamed: 1, suggestionsApplied: 0, flagsAccepted: 1 })
   })
 
   it("explains a failed scan and keeps the manual builder one tap away", async () => {
@@ -109,7 +106,7 @@ describe("Agenda scan review", () => {
     fetchMock.mockReturnValue(reply(200, { agenda: reviewSample, model: "test-model", usage: { inputTokens: 1, outputTokens: 1, thoughtTokens: 0 }, ms: 10 }))
     await scanPhoto()
     await screen.findByRole("heading", { name: "Check the agenda" })
-    await user.click(screen.getByRole("button", { name: "Remove Tom Master" }))
+    await user.click(screen.getByRole("button", { name: "Remove Ada Lovel" }))
     await user.click(screen.getByRole("button", { name: "Discard scan" }))
     expect(window.confirm).toHaveBeenCalled()
     await screen.findByRole("heading", { name: "Meeting agenda" })
