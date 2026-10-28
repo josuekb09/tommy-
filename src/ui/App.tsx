@@ -71,8 +71,8 @@ function TimerApp({ route, go }: { route: Route; go: (route: Route) => void }) {
     <main className="app-shell">
       <header className="app-header">
         <a className="brand-logo" href="#/timer" aria-label="Tommy timer">
-          <img className="logo-light" src="/Tommy-logo-light.svg" alt="Tommy" />
-          <img className="logo-dark" src="/Tommy-logo-dark.svg" alt="" />
+          <img className="logo-light" src="/tommy-logo-animated-light.svg" alt="Tommy" />
+          <img className="logo-dark" src="/tommy-logo-animated-dark.svg" alt="" />
         </a>
       </header>
       {lock === "other" && (

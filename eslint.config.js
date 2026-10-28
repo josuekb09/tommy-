@@ -4,7 +4,7 @@ import reactHooks from "eslint-plugin-react-hooks"
 import tseslint from "typescript-eslint"
 
 export default tseslint.config(
-  { ignores: ["dist", "dev-dist", "design", "node_modules", "test-results", "playwright-report", "hardware"] },
+  { ignores: ["dist", "dev-dist", "design", "node_modules", "test-results", "playwright-report", "hardware", ".wrangler"] },
   {
     files: ["**/*.{ts,tsx}"],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
