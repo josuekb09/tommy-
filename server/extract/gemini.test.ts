@@ -56,12 +56,14 @@ describe("Gemini request", () => {
       responseMimeType: "application/json",
       responseJsonSchema: extractionJsonSchema(),
       mediaResolution: "MEDIA_RESOLUTION_HIGH",
-      thinkingConfig: { thinkingLevel: "medium" },
     })
+    // lite models don't support thinkingConfig at all — it must be absent
+    expect(request.generationConfig).not.toHaveProperty("thinkingConfig")
     expect(request.systemInstruction.parts[0].text).toContain("Never guess or complete a name")
   })
 
-  it("gives Gemini 2.x a thinking budget, because it refuses a thinking level", () => {
+  it("lite models omit thinkingConfig; gemini-2.x non-lite gets a token budget; older flash models get a level", () => {
+    expect(geminiRequest([page], {}, "gemini-3.5-flash-lite").generationConfig).not.toHaveProperty("thinkingConfig")
     expect(geminiRequest([page], {}, "gemini-2.5-flash").generationConfig.thinkingConfig).toEqual({ thinkingBudget: 4_096 })
     expect(geminiRequest([page], { thinkingLevel: "low" }, "gemini-3.5-flash").generationConfig.thinkingConfig).toEqual({ thinkingLevel: "low" })
   })
@@ -70,7 +72,7 @@ describe("Gemini request", () => {
     const { fetch, run } = extractWith(ok(JSON.stringify(toastedSample)))
     await run()
     const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit]
-    expect(url).toBe("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent")
+    expect(url).toBe("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent")
     expect((init.headers as Record<string, string>)["x-goog-api-key"]).toBe("test-key")
     expect(String(init.body)).not.toContain("test-key")
   })
@@ -168,7 +170,7 @@ describe("Fallback models", () => {
   it("tries the free fallback models in order when Gemini is busy or out of free quota", async () => {
     const scan = run([busy, quota, () => ok(JSON.stringify(toastedSample), { modelVersion: "gemini-2.5-flash" })])
     expect((await scan.promise).model).toBe("gemini-2.5-flash")
-    expect(scan.models()).toEqual(["gemini-3.8-flash", "gemini-3.5-flash", "gemini-2.5-flash"])
+    expect(scan.models()).toEqual(["gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-2.5-flash"])
     expect(scan.bodies()[2].generationConfig.thinkingConfig).toEqual({ thinkingBudget: 4_096 })
   })
 
@@ -176,7 +178,7 @@ describe("Fallback models", () => {
     const scan = run([daily, busy, quota])
     const error = (await scan.promise.catch(error => error)) as ExtractError
     expect(error.kind).toBe("busy")
-    expect(error.message).toMatch(/^quota_used_up: .*gemini-3\.8-flash.* \| busy: .*gemini-3\.5-flash.* \| rate_limited: .*gemini-2\.5-flash/)
+    expect(error.message).toMatch(/^quota_used_up: .*gemini-3\.5-flash-lite.* \| busy: .*gemini-3\.8-flash.* \| rate_limited: .*gemini-2\.5-flash/)
     expect(scan.models()).toHaveLength(3)
   })
 
@@ -187,21 +189,21 @@ describe("Fallback models", () => {
   it("tries the next model when Google times out, and reports a refused key over an earlier busy model", async () => {
     const timedOut = run([() => reply({}, { status: 504 }), () => ok(JSON.stringify(toastedSample))])
     await timedOut.promise
-    expect(timedOut.models()).toEqual(["gemini-3.8-flash", "gemini-3.5-flash"])
+    expect(timedOut.models()).toEqual(["gemini-3.5-flash-lite", "gemini-3.8-flash"])
     const refused = run([busy, () => reply({ error: { message: "API key not valid" } }, { status: 403 })])
     await expect(refused.promise).rejects.toMatchObject({ kind: "not_configured" })
-    expect(refused.models()).toEqual(["gemini-3.8-flash", "gemini-3.5-flash"])
+    expect(refused.models()).toEqual(["gemini-3.5-flash-lite", "gemini-3.8-flash"])
   })
 
   it("does not try other models for a refused key or a refused request", async () => {
     const refused = run([() => reply({ error: { message: "API key not valid" } }, { status: 403 })])
     await expect(refused.promise).rejects.toMatchObject({ kind: "not_configured" })
-    expect(refused.models()).toEqual(["gemini-3.8-flash"])
+    expect(refused.models()).toEqual(["gemini-3.5-flash-lite"])
   })
 
   it("can be turned off", async () => {
     const scan = run([busy], [])
     await expect(scan.promise).rejects.toMatchObject({ kind: "busy" })
-    expect(scan.models()).toEqual(["gemini-3.8-flash"])
+    expect(scan.models()).toEqual(["gemini-3.5-flash-lite"])
   })
 })

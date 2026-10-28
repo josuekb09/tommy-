@@ -3,14 +3,22 @@ import type { AgendaImage, ScanErrorKind } from "../../src/engine/import/wire"
 import { extractionInstructions } from "./prompt"
 import { ExtractError, type AgendaExtractor, type ExtractResult } from "./provider"
 
-/** The current stable Flash model on the Gemini API's free tier. Override with GEMINI_MODEL. */
-export const DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
+/**
+ * Flash-lite is the fastest free-tier model. Falls back to full Flash models
+ * which are accurate but slower. Override with GEMINI_MODEL.
+ */
+export const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite"
 /**
  * Free-tier models tried in order when the main one is busy (5xx), timed out
- * (504) or out of free quota (429). Each model has its own free quota, so this stays at zero
- * cost. Override with GEMINI_FALLBACK_MODELS (comma-separated, empty for none).
+ * (504) or out of free quota (429). Each model has its own free quota, so this
+ * stays at zero cost. Override with GEMINI_FALLBACK_MODELS (comma-separated, empty for none).
  */
-export const DEFAULT_FALLBACK_MODELS = ["gemini-3.5-flash", "gemini-2.5-flash"]
+export const DEFAULT_FALLBACK_MODELS = ["gemini-3.8-flash", "gemini-2.5-flash"]
+/**
+ * Per-model timeout: give up quickly so the next fallback starts soon.
+ * The whole-scan deadline (timeoutMs) is still 140 s as the outer guard.
+ */
+export const DEFAULT_PER_MODEL_TIMEOUT_MS = 18_000
 const API = "https://generativelanguage.googleapis.com/v1beta"
 
 export type GeminiOptions = {
@@ -22,13 +30,22 @@ export type GeminiOptions = {
   thinkingLevel?: "low" | "medium" | "high"
   /** For the whole scan, fallbacks included; just under the browser's 150 s. */
   timeoutMs?: number
+  /** Maximum time to wait for a single model before trying the next fallback. */
+  perModelTimeoutMs?: number
   fetch?: typeof fetch
   now?: () => number
 }
 
-/** Gemini 2.x takes a thinking budget in tokens; thinkingLevel is refused there. */
-const thinkingConfig = (model: string, level: NonNullable<GeminiOptions["thinkingLevel"]>) =>
-  /^gemini-2\./.test(model) ? { thinkingBudget: { low: 1_024, medium: 4_096, high: 16_384 }[level] } : { thinkingLevel: level }
+/**
+ * Lite models don't support thinkingConfig at all — omit it.
+ * Non-lite gemini-2.x takes a thinking budget; older flash models use thinkingLevel.
+ * Returns undefined for lite models so the caller can exclude the field.
+ */
+const thinkingConfig = (model: string, level: NonNullable<GeminiOptions["thinkingLevel"]>): object | undefined => {
+  if (/lite/.test(model)) return undefined
+  if (/^gemini-2\./.test(model)) return { thinkingBudget: { low: 1_024, medium: 4_096, high: 16_384 }[level] }
+  return { thinkingLevel: level }
+}
 
 /** The generateContent request: instructions, the pages in order, and the extraction schema as the required response format. */
 export function geminiRequest(
@@ -40,6 +57,7 @@ export function geminiRequest(
     { text: `Page ${index + 1} of ${images.length}:` },
     { inlineData: { mimeType: image.mimeType, data: image.data } },
   ])
+  const thinking = thinkingConfig(model, options.thinkingLevel ?? "medium")
   return {
     systemInstruction: { parts: [{ text: extractionInstructions }] },
     contents: [{ role: "user", parts: [...pages, { text: "Transcribe this meeting agenda." }] }],
@@ -47,7 +65,7 @@ export function geminiRequest(
       responseMimeType: "application/json",
       responseJsonSchema: extractionJsonSchema(),
       mediaResolution: options.mediaResolution ?? "MEDIA_RESOLUTION_HIGH",
-      thinkingConfig: thinkingConfig(model, options.thinkingLevel ?? "medium"),
+      ...(thinking !== undefined && { thinkingConfig: thinking }),
       maxOutputTokens: 32_768,
     },
   }
@@ -158,16 +176,19 @@ export function createGeminiExtractor(options: GeminiOptions): AgendaExtractor {
     model,
     async extractAgenda(images) {
       const started = now()
-      const signal = AbortSignal.timeout(options.timeoutMs ?? 140_000)
+      const deadline = AbortSignal.timeout(options.timeoutMs ?? 140_000)
+      const perModelMs = options.perModelTimeoutMs ?? DEFAULT_PER_MODEL_TIMEOUT_MS
       const failures: ExtractError[] = []
       for (const candidate of models) {
+        // Race the per-model budget against the remaining overall deadline.
+        const modelSignal = AbortSignal.any([deadline, AbortSignal.timeout(perModelMs)])
         try {
-          return { ...(await attempt(candidate, images, signal)), ms: now() - started }
+          return { ...(await attempt(candidate, images, modelSignal)), ms: now() - started }
         } catch (error) {
           if (!(error instanceof ExtractError)) throw error
           failures.push(error)
-          // A refused key or request is the real blocker: say that, not an earlier busy model.
-          if (!tryNext(error, signal)) return reported(error, failures)
+          // A refused key or bad request is the real blocker: say that, not an earlier busy model.
+          if (!tryNext(error, deadline)) return reported(error, failures)
         }
       }
       const chosen = failures.reduce((best, error) => (soonest.indexOf(error.kind) < soonest.indexOf(best.kind) ? error : best))

@@ -6,15 +6,16 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      // Never reload on its own: an update must not interrupt a speech.
       registerType: "prompt",
       includeAssets: ["Tommy-app-icon.svg", "Tommy-logo-dark.svg", "Tommy-logo-light.svg", "Tommy-mark.svg"],
-      // clientsClaim makes the first visit offline-ready at once; without skipWaiting,
-      // later versions still wait for the user to accept the update prompt.
       workbox: {
         globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api\//],
+        // skipWaiting: new SW takes over immediately so a phone gets the update on next open.
+        // clientsClaim: takes control of existing tabs right after activation.
+        // The "Update now" banner in App.tsx then reloads once, safely between speeches.
+        skipWaiting: true,
         clientsClaim: true,
       },
       manifest: {

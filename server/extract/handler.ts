@@ -2,7 +2,7 @@ import { scanMessages, scanRequest, type ScanFailure, type ScanSuccess } from ".
 import { createGeminiExtractor } from "./gemini"
 import { ExtractError, type AgendaExtractor } from "./provider"
 
-export type ScanEnv = { GEMINI_API_KEY?: string; GEMINI_MODEL?: string; GEMINI_FALLBACK_MODELS?: string }
+export type ScanEnv = { GEMINI_API_KEY?: string; GEMINI_MODEL?: string; GEMINI_FALLBACK_MODELS?: string; GEMINI_PER_MODEL_TIMEOUT_MS?: string }
 /** Up to 4 pages of base64 plus JSON overhead. */
 const MAX_BODY_BYTES = 33_000_000
 
@@ -58,5 +58,6 @@ const defaultExtractor = (env: ScanEnv) =>
         fallbackModels: env.GEMINI_FALLBACK_MODELS?.split(",")
           .map(model => model.trim())
           .filter(Boolean),
+        ...(env.GEMINI_PER_MODEL_TIMEOUT_MS && { perModelTimeoutMs: Number(env.GEMINI_PER_MODEL_TIMEOUT_MS) }),
       })
     : undefined

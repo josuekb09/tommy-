@@ -191,33 +191,36 @@ export function ReviewScreen({
         )}
 
         <div className="review-list">
-          {review.draft.segments.map((segment, segmentIndex) => (
-            <section className="review-segment" key={`${segment.kind}-${segmentIndex}`} aria-label={segment.title ?? segmentLabels[segment.kind]}>
-              <h2>{segment.title ?? segmentLabels[segment.kind]}</h2>
-              <ol>
-                {segment.items.map((item, index) => (
-                  <ReviewRow
-                    key={item.key}
-                    item={item}
-                    first={index === 0}
-                    last={index === segment.items.length - 1}
-                    evaluates={item.evaluatesKey ? itemsOf(review.draft).find(other => other.key === item.evaluatesKey) : undefined}
-                    openIds={openIds}
-                    selected={item.key === selected}
-                    select={() => setSelected(item.key)}
-                    rename={name => setReview(current => renameItem(current, item.key, name))}
-                    fix={index => {
-                      setReview(current => applySuggestion(current, item.key, index))
-                      setApplied(count => count + 1)
-                    }}
-                    accept={index => setReview(current => acceptFlag(current, item.key, index))}
-                    move={direction => setReview(current => moveDraftItem(current, item.key, direction))}
-                    remove={() => setReview(current => removeItem(current, item.key))}
-                  />
-                ))}
-              </ol>
-            </section>
-          ))}
+          {review.draft.segments
+            .filter(segment => ["prepared_speeches", "evaluations", "table_topics"].includes(segment.kind))
+            .map((segment, segmentIndex) => (
+              <section className="review-segment" key={`${segment.kind}-${segmentIndex}`} aria-label={segment.title ?? segmentLabels[segment.kind]}>
+                <h2>{segment.title ?? segmentLabels[segment.kind]}</h2>
+                <ol>
+                  {segment.items.map((item, index) => (
+                    <ReviewRow
+                      key={item.key}
+                      item={item}
+                      first={index === 0}
+                      last={index === segment.items.length - 1}
+                      evaluates={item.evaluatesKey ? itemsOf(review.draft).find(other => other.key === item.evaluatesKey) : undefined}
+                      openIds={openIds}
+                      selected={item.key === selected}
+                      select={() => setSelected(item.key)}
+                      rename={name => setReview(current => renameItem(current, item.key, name))}
+                      fix={index => {
+                        setReview(current => applySuggestion(current, item.key, index))
+                        setApplied(count => count + 1)
+                      }}
+                      accept={index => setReview(current => acceptFlag(current, item.key, index))}
+                      move={direction => setReview(current => moveDraftItem(current, item.key, direction))}
+                      remove={() => setReview(current => removeItem(current, item.key))}
+                    />
+                  ))}
+                </ol>
+              </section>
+            ))}
+          <OtherRolesSection draft={review.draft} />
         </div>
       </div>
 
@@ -337,5 +340,25 @@ function ReviewRow({
         </button>
       </div>
     </li>
+  )
+}
+
+/** Roles the Timer doesn't time (Toastmaster, GE, Grammarian, etc.) shown collapsed so they don't crowd the queue. */
+function OtherRolesSection({ draft }: { draft: ImportDraft }) {
+  const timedKinds = new Set(["prepared_speeches", "evaluations", "table_topics"])
+  const others = draft.segments
+    .filter(segment => !timedKinds.has(segment.kind))
+    .flatMap(segment => segment.items)
+    .filter(item => item.personName || item.role)
+  if (!others.length) return null
+  const names = others
+    .map(item => [item.personName, roleLabels[item.role]].filter(Boolean).join(" (") + (item.personName ? ")" : ""))
+    .filter(Boolean)
+    .join(", ")
+  return (
+    <details className="other-roles-summary">
+      <summary>Other roles (not timed by the Timer) — {others.length}</summary>
+      <p>{names}</p>
+    </details>
   )
 }

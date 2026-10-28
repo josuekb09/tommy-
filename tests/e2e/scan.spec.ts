@@ -28,7 +28,7 @@ test("a scanned agenda is checked row by row before it becomes the meeting", asy
   await expect(page.getByRole("heading", { name: "Check the agenda" })).toBeVisible()
   expect(sent!.images).toHaveLength(1)
   expect(sent!.images[0].mimeType).toBe("image/jpeg")
-  await expect(page.getByRole("status")).toHaveText("8 items read3 to check")
+  await expect(page.getByRole("status")).toHaveText("8 items read2 to check")
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
   const axe = await new AxeBuilder({ page }).analyze()
   expect(axe.violations.filter(v => v.impact === "serious" || v.impact === "critical")).toEqual([])
@@ -39,8 +39,7 @@ test("a scanned agenda is checked row by row before it becomes the meeting", asy
   await page.getByRole("button", { name: "Rows" }).click()
 
   const useIt = page.getByRole("button", { name: "Use this agenda" })
-  await expect(useIt).toBeDisabled()
-  await page.getByRole("button", { name: "Use “Tia Timer”" }).click()
+  await expect(useIt).toBeDisabled()
   await page.getByLabel("Name for Speaker (Speaker 2) at 19:20").fill("Ben Byte")
   await page.getByLabel("Name for Speaker (Speaker 2) at 19:20").blur()
   await page.getByRole("button", { name: "Keep as read" }).click()

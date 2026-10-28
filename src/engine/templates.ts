@@ -55,65 +55,30 @@ function builtIn(id: string, name: string, layout: Block[]): Template {
 const speech = (key: string, profileId = "speech"): Slot => ({ key, role: "Speaker", profileId })
 const brief = (speechKey: string, printed = "1:00"): Slot => ({ role: "EvaluatorBrief", printed, evaluates: speechKey })
 const evaluation = (speechKey: string): Slot => ({ role: "Evaluator", profileId: "evaluation", evaluates: speechKey })
-const untimed = (role: AgendaRole, extraRoles?: AgendaRole[]): Slot => ({ role, untimed: true, ...(extraRoles && { extraRoles }) })
 
 /**
  * Roles and timings of the formats Tommy's clubs use, read from their real
- * agendas (fixtures/agendas/), never names. Speeches, briefs, evaluations and
- * Table Topics follow the printed order, timings and pairings; the opening
- * and reports keep the roles the Timer reports on, with the time printed
- * (or none). Toastmaster link-ins, breaks and mid-meeting Timer reports are
- * left out. Table Topics speakers are added live, so that segment starts with
- * only its Master.
+ * agendas (fixtures/agendas/), never names. Only the three groups the Timer
+ * tracks are included: prepared speeches (with briefs), evaluations and Table
+ * Topics. Opening roles (President, Toastmaster, etc.) and reports
+ * (Timer, Grammarian, etc.) are not the Timer's concern and are omitted.
+ * Table Topics speakers are added live, so that segment starts empty.
  */
 export const builtInTemplates: Template[] = [
   builtIn("builtin-toasted", "ToastED", [
-    [
-      "opening",
-      [
-        { role: "SergeantAtArms", printed: "3:00" },
-        { role: "President", printed: "25:00" },
-        { role: "Toastmaster", printed: "5:00" },
-        { role: "Timer", printed: "2:00" },
-        { role: "AhCounter", printed: "2:00" },
-        { role: "Grammarian", printed: "2:00" },
-      ],
-    ],
     ["prepared_speeches", [brief("s1"), speech("s1", "ice_breaker"), brief("s2"), speech("s2"), brief("s3"), speech("s3")]],
-    ["other", [{ role: "Other", printed: "10:00 15:00 20:00", title: "Educational" }], "Educational"],
-    ["table_topics", [untimed("TableTopicsMaster")]],
+    ["table_topics", []],
     ["evaluations", [evaluation("s1"), evaluation("s2"), evaluation("s3")]],
-    [
-      "reports",
-      [
-        { role: "Timer", printed: "1:00" },
-        { role: "AhCounter", printed: "2:00" },
-        { role: "Grammarian", printed: "2:00" },
-      ],
-    ],
-    ["other", [{ role: "President", printed: "18:00" }], "Closing"],
   ]),
   builtIn("builtin-cape-town", "Cape Town", [
-    [
-      "opening",
-      [
-        { role: "SergeantAtArms", printed: "1:00 1:30 2:00" },
-        { role: "President", printed: "1:00 2:00 3:00" },
-        { role: "Toastmaster", printed: "3:00 4:00 5:00" },
-        { role: "Other", printed: "5:00 6:00 7:00" },
-      ],
-    ],
     ["prepared_speeches", [speech("s1", "ice_breaker"), speech("s2"), speech("s3"), speech("s4"), speech("s5")]],
     ["evaluations", [evaluation("s1"), evaluation("s2"), evaluation("s3"), evaluation("s4"), evaluation("s5")]],
-    ["table_topics", [untimed("TableTopicsMaster")]],
-    ["reports", [untimed("Timer"), untimed("AhCounter"), untimed("Grammarian")]],
+    ["table_topics", []],
   ]),
   builtIn("builtin-pinelands", "Pinelands", [
-    ["opening", [untimed("SergeantAtArms"), untimed("President"), untimed("Toastmaster")]],
     ["prepared_speeches", [speech("s1"), speech("s2"), speech("s3")]],
     ["evaluations", [evaluation("s1"), evaluation("s2"), evaluation("s3")]],
-    ["reports", [untimed("Timer"), untimed("Grammarian", ["AhCounter"])]],
-    ["other", [untimed("President")], "Closing"],
+    ["table_topics", []],
   ]),
 ]
 

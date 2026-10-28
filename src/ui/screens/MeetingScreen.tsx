@@ -42,13 +42,13 @@ import { repo } from "../runtime"
 import { resolveTiming, TimingField, type TimingChoice } from "../timing-field"
 import { ReviewScreen, ScanSheet, type ScannedAgenda } from "./ScanReview"
 
-const rolesFor: Record<SegmentKind, AgendaRole[]> = {
-  opening: ["Toastmaster", "President", "SergeantAtArms", "Other"],
+/** Only the three segment kinds the Timer actually tracks; other segments are hidden. */
+const timedSegmentKinds: SegmentKind[] = ["prepared_speeches", "evaluations", "table_topics"]
+
+const rolesFor: Partial<Record<SegmentKind, AgendaRole[]>> = {
   prepared_speeches: ["Speaker", "EvaluatorBrief"],
-  table_topics: ["TableTopicsSpeaker", "TableTopicsMaster", "TableTopicsEvaluator"],
-  evaluations: ["Evaluator", "GeneralEvaluator"],
-  reports: ["Timer", "AhCounter", "Grammarian"],
-  other: ["Other", "Speaker"],
+  table_topics: ["TableTopicsSpeaker"],
+  evaluations: ["Evaluator", "GeneralEvaluator", "TableTopicsEvaluator"],
 }
 const pairedRoles: AgendaRole[] = ["Evaluator", "EvaluatorBrief"]
 
@@ -179,20 +179,22 @@ export function MeetingScreen({ data, readOnly, open, notify }: { data: Data; re
       )}
 
       <div className="queue-segments">
-        {meeting.segments.map((segment, index) => (
-          <SegmentSection
-            key={segment.id}
-            data={data}
-            segment={segment}
-            first={index === 0}
-            last={index === meeting.segments.length - 1}
-            readOnly={viewOnly}
-            open={open}
-            edit={itemId => setSheet({ type: "edit", itemId })}
-            add={() => setSheet({ type: "add", segmentId: segment.id })}
-            notify={notify}
-          />
-        ))}
+        {meeting.segments
+          .filter(segment => timedSegmentKinds.includes(segment.kind))
+          .map((segment, index, filtered) => (
+            <SegmentSection
+              key={segment.id}
+              data={data}
+              segment={segment}
+              first={index === 0}
+              last={index === filtered.length - 1}
+              readOnly={viewOnly}
+              open={open}
+              edit={itemId => setSheet({ type: "edit", itemId })}
+              add={() => setSheet({ type: "add", segmentId: segment.id })}
+              notify={notify}
+            />
+          ))}
       </div>
 
       {!finished && (
@@ -469,7 +471,8 @@ function ItemSheet({
   const { kind } = segment
   const items = orderedItems(meeting)
   const people = useMemo(() => peopleOf(data.members, data.guests), [data.members, data.guests])
-  const roles = item && !rolesFor[kind].includes(item.role) ? [item.role, ...rolesFor[kind]] : rolesFor[kind]
+  const defaultRoles = rolesFor[kind] ?? ["Speaker"]
+  const roles = item && !defaultRoles.includes(item.role) ? [item.role, ...defaultRoles] : defaultRoles
   const record = item && data.records.find(r => r.agendaItemId === item.id)
   const timed = !!record && stateOf(record.actions).status !== "idle"
   const speeches = items.filter(other => other.role === "Speaker")

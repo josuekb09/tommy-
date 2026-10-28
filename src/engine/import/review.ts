@@ -15,11 +15,11 @@ export const flagId = (item: Pick<DraftItem, "key">, index: number) => `${item.k
 
 export const itemsOf = (draft: ImportDraft) => draft.segments.flatMap(segment => segment.items)
 
-/** The flags still waiting for the Timer, with their item. */
+/** The flags still waiting for the Timer, with their item. Only timed items block confirmation; non-timed items are collapsed in OtherRolesSection with no flag UI. */
 export function openFlags(review: Review): { item: DraftItem; flag: Flag; id: string }[] {
-  return itemsOf(review.draft).flatMap(item =>
-    item.flags.map((flag, index) => ({ item, flag, id: flagId(item, index) })).filter(({ id }) => !review.accepted.has(id)),
-  )
+  return itemsOf(review.draft)
+    .filter(item => item.timed !== false)
+    .flatMap(item => item.flags.map((flag, index) => ({ item, flag, id: flagId(item, index) })).filter(({ id }) => !review.accepted.has(id)))
 }
 
 export const canConfirm = (review: Review) => openFlags(review).length === 0 && itemsOf(review.draft).length > 0

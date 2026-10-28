@@ -3,7 +3,7 @@ import { personLabel, timedItems } from "../agenda"
 import { formatClock, rangeLabel, roleLabels } from "../profiles"
 import { qualifyingWindow, resultFor, stateOf } from "../timing"
 
-export type ReportGroupKey = "prepared_speeches" | "evaluations" | "table_topics" | "other"
+export type ReportGroupKey = "prepared_speeches" | "evaluations" | "table_topics"
 export type AwardCategory = "speaker" | "table_topics" | "evaluator"
 /** A result, or why there is none: never timed (or skipped, or reset), or the timer is still going. */
 export type LineStatus = TimeResult | "not_timed" | "in_progress"
@@ -41,14 +41,13 @@ export const groupLabels: Record<ReportGroupKey, string> = {
   prepared_speeches: "Prepared speeches",
   evaluations: "Evaluations",
   table_topics: "Table Topics",
-  other: "Other",
 }
-const groupOrder: ReportGroupKey[] = ["prepared_speeches", "evaluations", "table_topics", "other"]
+const groupOrder: ReportGroupKey[] = ["prepared_speeches", "evaluations", "table_topics"]
 
 export const awardLabels: Record<AwardCategory, string> = { speaker: "Best Speaker", table_topics: "Best Table Topics", evaluator: "Best Evaluator" }
 
-/** Report sections follow the Timer's log: what was timed, not where it sat on the agenda. */
-export function groupOf(role: AgendaRole): ReportGroupKey {
+/** The three report groups the Timer tracks. Only timed roles appear; untimed roles never reach this function. */
+export function groupOf(role: AgendaRole): ReportGroupKey | undefined {
   switch (role) {
     case "Speaker":
       return "prepared_speeches"
@@ -60,7 +59,7 @@ export function groupOf(role: AgendaRole): ReportGroupKey {
     case "TableTopicsSpeaker":
       return "table_topics"
     default:
-      return "other"
+      return undefined
   }
 }
 
@@ -83,7 +82,9 @@ export function outsideReason(elapsedMs: number, item: Pick<AgendaItem, "timing"
   return `${lead}: ${detail}.`
 }
 
-function lineFor(item: AgendaItem, record: TimedRecord | undefined, rules: Pick<ClubRules, "withinRule" | "tableTopicsGuestsEligible">): ReportLine {
+type MaybeLine = Omit<ReportLine, "group"> & { group: ReportGroupKey | undefined }
+
+function lineFor(item: AgendaItem, record: TimedRecord | undefined, rules: Pick<ClubRules, "withinRule" | "tableTopicsGuestsEligible">): MaybeLine {
   const status = stateOf(record?.actions ?? []).status
   const base = {
     itemId: item.id,
@@ -137,7 +138,9 @@ export function buildReport(
   rules: Pick<ClubRules, "withinRule" | "reportStyle" | "tableTopicsGuestsEligible">,
 ): Report {
   const byItem = new Map(records.map(record => [record.agendaItemId, record]))
-  const lines = timedItems(meeting).map(item => lineFor(item, byItem.get(item.id), rules))
+  const lines = timedItems(meeting)
+    .map(item => lineFor(item, byItem.get(item.id), rules))
+    .filter((line): line is ReportLine => line.group !== undefined)
   const groups = groupOrder.map(key => ({ key, label: groupLabels[key], lines: lines.filter(line => line.group === key) })).filter(group => group.lines.length)
   const awards = (Object.keys(awardLabels) as AwardCategory[])
     .map(category => {
