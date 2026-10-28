@@ -9,10 +9,11 @@ Ready for tonight's meeting.
 
 ## Ready for tonight checklist
 
-- [x] All checks pass: `npm run typecheck && npm run lint && npm test && npm run test:e2e` (327 unit + 29 e2e)
+- [x] All checks pass: `npm run typecheck && npm run lint && npm test && npm run test:e2e` (328 unit + 29 e2e)
 - [x] Production build clean: `npm run build` — no keys, no secrets in dist/
 - [x] Merge rebuild → main, push, Cloudflare production live at https://tommy-21n.pages.dev/
 - [x] Quick scan + timer test on production Chrome — all flows verified (2026-10-28)
+- [x] Animated logo deployed (afc569a) — SW auto-reload active, signal CSS-class tests added
 
 ## What is ready
 
