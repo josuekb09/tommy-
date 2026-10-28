@@ -26,7 +26,7 @@ Ready for tonight's meeting.
 - **Report.** Every timed item (speakers, evaluators, Table Topics), award eligibility with reason, WhatsApp copy, printable log.
 - **Agenda scan.** `gemini-3.5-flash-lite` primary (fast free tier). Falls back to `gemini-3.8-flash` → `gemini-2.5-flash`. Key stays server-side only.
   - Only timed roles extracted (prompt change): prepared speakers, evaluators, Table Topics speakers. Non-timed roles shown collapsed in "Other roles (not timed)".
-  - Per-model timeout 18 s so fallbacks kick in fast.
+  - Per-model timeout 45 s (enough for a slow free-tier response; 2 fallbacks still fit inside 140 s).
   - Images resized to 1 600 px JPEG 0.7 in-browser.
 - **Scan review.** Flagged rows editable; non-timed rows collapsed; confirmation requires only timed flags resolved.
 - **Service worker.** `skipWaiting: true` + `clientsClaim: true` — phones get updates automatically on next open. Update banner available if needed.

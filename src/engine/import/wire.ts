@@ -31,5 +31,5 @@ export const scanMessages: Record<ScanErrorKind, string> = {
   bad_request: "These files can’t be scanned. Use up to 4 photos (JPEG, PNG, WEBP or HEIC) or a PDF, or build it by hand.",
   not_configured: "Agenda scanning isn’t set up on this site yet. Build the agenda by hand.",
   unavailable: "Google Gemini isn’t answering. Try again later, or build it by hand.",
-  timeout: "The scan took too long. Try again, or build it by hand.",
+  timeout: "The scan timed out — Gemini may be busy. Try again in a minute, or build it by hand.",
 }

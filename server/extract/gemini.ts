@@ -15,10 +15,10 @@ export const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite"
  */
 export const DEFAULT_FALLBACK_MODELS = ["gemini-3.8-flash", "gemini-2.5-flash"]
 /**
- * Per-model timeout: give up quickly so the next fallback starts soon.
- * The whole-scan deadline (timeoutMs) is still 140 s as the outer guard.
+ * Per-model timeout: enough time for a slow free-tier response, but short
+ * enough that two fallback attempts still fit inside the 140 s outer deadline.
  */
-export const DEFAULT_PER_MODEL_TIMEOUT_MS = 18_000
+export const DEFAULT_PER_MODEL_TIMEOUT_MS = 45_000
 const API = "https://generativelanguage.googleapis.com/v1beta"
 
 export type GeminiOptions = {
@@ -98,7 +98,7 @@ export function dailyQuota(body: GeminiError, seconds: number | undefined): bool
 const tryNext = (error: unknown, signal: AbortSignal) =>
   error instanceof ExtractError && (["busy", "rate_limited", "quota_used_up"].includes(error.kind) || (error.kind === "timeout" && !signal.aborted))
 /** When every model failed, the Timer is told about the one that clears soonest. */
-const soonest: ScanErrorKind[] = ["busy", "timeout", "unavailable", "rate_limited", "quota_used_up"]
+const soonest: ScanErrorKind[] = ["timeout", "busy", "unavailable", "rate_limited", "quota_used_up"]
 
 /**
  * Agenda extraction with Google Gemini through its REST API (plain fetch, so
