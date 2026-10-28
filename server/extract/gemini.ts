@@ -7,7 +7,7 @@ import { ExtractError, type AgendaExtractor, type ExtractResult } from "./provid
  * Flash-lite is the fastest free-tier model. Falls back to full Flash models
  * which are accurate but slower. Override with GEMINI_MODEL.
  */
-export const DEFAULT_GEMINI_MODEL = "gemini-2.0-flash-lite"
+export const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite"
 /**
  * Free-tier models tried in order when the main one is busy (5xx), timed out
  * (504) or out of free quota (429). Each model has its own free quota, so this
@@ -37,12 +37,13 @@ export type GeminiOptions = {
 }
 
 /**
- * Gemini 2.x takes a thinking budget in tokens; thinkingLevel is refused there.
- * flash-lite models are too fast to need much thinking; we use a minimal budget.
+ * Lite models don't support thinkingConfig at all — omit it.
+ * Non-lite gemini-2.x takes a thinking budget; older flash models use thinkingLevel.
+ * Returns undefined for lite models so the caller can exclude the field.
  */
-const thinkingConfig = (model: string, level: NonNullable<GeminiOptions["thinkingLevel"]>) => {
-  const isLite = /lite/.test(model)
-  if (/^gemini-2\./.test(model)) return { thinkingBudget: isLite ? 0 : { low: 1_024, medium: 4_096, high: 16_384 }[level] }
+const thinkingConfig = (model: string, level: NonNullable<GeminiOptions["thinkingLevel"]>): object | undefined => {
+  if (/lite/.test(model)) return undefined
+  if (/^gemini-2\./.test(model)) return { thinkingBudget: { low: 1_024, medium: 4_096, high: 16_384 }[level] }
   return { thinkingLevel: level }
 }
 
@@ -56,6 +57,7 @@ export function geminiRequest(
     { text: `Page ${index + 1} of ${images.length}:` },
     { inlineData: { mimeType: image.mimeType, data: image.data } },
   ])
+  const thinking = thinkingConfig(model, options.thinkingLevel ?? "medium")
   return {
     systemInstruction: { parts: [{ text: extractionInstructions }] },
     contents: [{ role: "user", parts: [...pages, { text: "Transcribe this meeting agenda." }] }],
@@ -63,7 +65,7 @@ export function geminiRequest(
       responseMimeType: "application/json",
       responseJsonSchema: extractionJsonSchema(),
       mediaResolution: options.mediaResolution ?? "MEDIA_RESOLUTION_HIGH",
-      thinkingConfig: thinkingConfig(model, options.thinkingLevel ?? "medium"),
+      ...(thinking !== undefined && { thinkingConfig: thinking }),
       maxOutputTokens: 32_768,
     },
   }
